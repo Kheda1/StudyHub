@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#1E88E5', // Primary blue
+    color: '#1E88E5',
     textAlign: 'center',
     marginBottom: wp(10),
   },
@@ -90,10 +90,10 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: wp(5),
     backgroundColor: '#fff',
-    color: '#212121', // Dark text
+    color: '#212121',
   },
   loginButton: {
-    backgroundColor: '#1E88E5', // Primary
+    backgroundColor: '#1E88E5',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   signupButton: {
-    backgroundColor: '#4CAF50', // Accent Green
+    backgroundColor: '#4CAF50',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
