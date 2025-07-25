@@ -91,7 +91,7 @@ const MainLayout = () => {
         const handleDeepLink = (event: { url: string }) => {
           const url = event.url;
           const path = url.replace("studyhub://", "");
-          const allowedRoutes = ["/home", "/study-session", "/resources"];
+          const allowedRoutes = ["/home", "/study-session", "/user/welcome"]; // Add all allowed routes here
           if (allowedRoutes.includes(`/${path}`)) {
             router.push(`/(tabs)/resources`);
           }
@@ -126,12 +126,12 @@ const MainLayout = () => {
       }}
     >
       <Stack.Screen name="index" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="welcome" />
-      <Stack.Screen name="+not-found" />
-      <Stack.Screen name="auth" />
-      <Stack.Screen name="study-session" />
-      <Stack.Screen name="resources" />
+      {/* <Stack.Screen name="(tabs)" /> */}
+      {/* <Stack.Screen name="welcome" /> */}
+      {/* <Stack.Screen name="+not-found" /> */}
+      {/* <Stack.Screen name="auth" /> */}
+      {/* <Stack.Screen name="study-session" /> */}
+      {/* <Stack.Screen name="resources" /> */}
     </Stack>
   );
 };

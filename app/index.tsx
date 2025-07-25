@@ -8,13 +8,17 @@ import {
   StyleSheet
 } from 'react-native';
 import { auth } from '@/firebase/FirebaseConfig';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithPhoneNumber, PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import { router } from 'expo-router';
 import { wp } from '@/constants/common';
 
 const Index = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [verificationId, setVerificationId] = useState('');
+  const [code, setCode] = useState('');
+
 
   const signIn = async () => {
     try {
@@ -36,11 +40,35 @@ const Index = () => {
     }
   };
 
+  const sendVerification = async () => {
+    try {
+      const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber);
+      setVerificationId(confirmationResult.verificationId);
+      alert('Verification code sent.');
+    } catch (error: any) {
+      console.error(error);
+      alert('Failed to send verification code: ' + error.message);
+    }
+  };
+
+  const confirmCode = async () => {
+    try {
+      const credential = PhoneAuthProvider.credential(verificationId, code);
+      await signInWithCredential(auth, credential);
+      router.replace('/Home');
+    } catch (error: any) {
+      console.error(error);
+      alert('Invalid code: ' + error.message);
+    }
+  };
+
+
+
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Welcome to StudyHub</Text>
 
-      <TextInput
+      {/* <TextInput
         style={styles.input}
         placeholder="Email"
         placeholderTextColor="#999"
@@ -64,7 +92,36 @@ const Index = () => {
 
       <TouchableOpacity style={styles.signupButton} onPress={signUp}>
         <Text style={styles.signupText}>Create Account</Text>
+      </TouchableOpacity> */}
+
+      <TextInput
+        style={styles.input}
+        placeholder="+263xxxxxxx"
+        placeholderTextColor="#999"
+        value={phoneNumber}
+        onChangeText={setPhoneNumber}
+        keyboardType="phone-pad"
+      />
+      <TouchableOpacity style={styles.loginButton} onPress={sendVerification}>
+        <Text style={styles.loginText}>Send Code</Text>
       </TouchableOpacity>
+
+      {verificationId ? (
+        <>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter Code"
+            placeholderTextColor="#999"
+            value={code}
+            onChangeText={setCode}
+            keyboardType="number-pad"
+          />
+          <TouchableOpacity style={styles.signupButton} onPress={confirmCode}>
+            <Text style={styles.signupText}>Confirm Code</Text>
+          </TouchableOpacity>
+        </>
+      ) : null}
+
     </SafeAreaView>
   );
 };
