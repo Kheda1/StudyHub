@@ -7,7 +7,7 @@
 
 const tintColorLight = '#0a7ea4';
 const tintColorDark = '#fff';
-const accent = '#46cb81';
+const accent = '#1E88E5';
 const accentlight = '#46cb8129';
 const coolGray = '#C4C4C4'
 //6D6D6D
