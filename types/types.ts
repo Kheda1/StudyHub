@@ -1,108 +1,133 @@
-import { User } from "firebase/auth"
-
-export type reply = {
-    reply?: string,
-    photoURL?: string,
-    displayName?: string,
-    uid?: string,
-    id?: string,
-    created_at?: string,
-    likes?: object[]
+// User Profile
+export interface UserProfile {
+  uid: string;
+  fullName: string;
+  email: string;
+  academicLevel: AcademicLevel;
+  studyPreferences: StudyPreferences;
+  avatarUrl?: string;
+  bio?: string;
+  joinedAt: Date;
+  isOnline?: boolean;
 }
 
-export type answer = {
-    answer: string,
-    created_at: string,
-    displaName: string,
-    id: string,
-    uid: string,
-    replies: reply[],
-    likes: object[],
-}
-export type user = {
-    uid: string,
-    displayName?: string,
-    photoURL?: string,
-    phoneNumber?: string,
-    email?: string,
-    trusted?: [],
-    bio?: string
+// Academic Level Options
+ export type AcademicLevel = 
+   | 'ZJC'
+   | 'O-Level'
+   | 'A-Level'
+   | 'Undergraduate'
+   | 'Postgraduate';
 
-}
-export type Question = {
-    question: string,
-    views: number,
-    likes: object[],
-    dislikes: object[],
-    user: string,
-    category: string,
-    tags: object[],
-    answers: answer[],
-    created_at: string,
-    id: string,
-    image: string | null,
-    reposts: [],
-    reposting: string | null
-    mentionProduct: string | null
-}
-export type Settings = {
-    version?: String,
-    notifications?: boolean,
-    theme?: 'device' | 'light' | 'dark',
-    fontsize?: 1 | 2 | 3 | 4 | 5 | 7,
+// Study Preferences
+export interface StudyPreferences {
+  preferredSubjects: string[];
+  preferredStudyTimes: StudyTime[];
+  studyMode: StudyMode;
+  languagesSpoken?: string[];
 }
 
-export type Product = {
-    product_name: string,
-    description: string,
-    price: string,
-    condition: string,
-    brand: string,
-    location: string,
-    category: string,
-    rating: [],
-    supplier: string,
-    images: string[],
-    id: string,
-    isAd: string,
-    created_at: string | undefined,
-    reviews: [],
-    additionalCosts: additionalCost[],
-    per: string,
-    booking: boolean
+// Time of Study Preference
+export type StudyTime = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
+
+// Study Mode
+export type StudyMode = 'Buddy' | 'Group' | 'Both';
+
+// Study Group
+export interface StudyGroup {
+  id: string;
+  name: string;
+  subject: string;
+  createdBy: string; // uid
+  members: string[]; // uids
+  description?: string;
+  createdAt: Date;
+  isPrivate: boolean;
+  schedule?: GroupSchedule;
 }
 
-export type additionalCost = {
-    id: string,
-    name: string,
-    value: string
+// Group Schedule
+export interface GroupSchedule {
+  day: string; // e.g., 'Monday'
+  startTime: string; // e.g., '14:00'
+  endTime: string;   // e.g., '16:00'
+  location?: string;
+  onlineLink?: string;
 }
 
-export type advert = {
-    id: string,
-    link: string,
-    images: string[],
-    description: string,
-    userID: string, created_at: string
-}
-export type cartProduct = {
-    productData: Product,
-    count: number
-}
-
-export type OrderItem = Product & {
-    quantity: number;
-    bookingStatus?: 'pending' | 'approved' | 'rejected'; 
+// Chat Message
+export interface Message {
+  id: string;
+  senderId: string;
+  groupId: string;
+  content: string;
+  timestamp: Date;
+  type: 'text' | 'image' | 'file';
+  attachmentUrl?: string;
 }
 
-export type Order = {
-    id: string; 
-    userId: string; 
-    items: OrderItem[]; 
-    deliveryAddress: string; 
-    phoneNumber: string; 
-    notes?: string; 
-    total: number; 
-    status: 'pending' | 'completed' | 'canceled'; 
-    createdAt: string; 
+// Notification
+export interface Notification {
+  id: string;
+  recipientId: string;
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: Date;
+}
+
+// Resource
+export interface Resource {
+  id: string;
+  title: string;
+  subject: string;
+  fileUrl: string;
+  uploadedBy: string;
+  uploadedAt: Date;
+  fileType: 'pdf' | 'docx' | 'ppt' | 'image' | 'video';
+}
+
+// Subject
+export interface Subject {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+// Enum-style types for UI
+export type ThemeMode = 'light' | 'dark';
+
+// Collections structure:
+export interface User {
+  displayName: string,
+  firstName: string,
+  currentStreak: number,
+  weeklyGoalHours: number,
+  weeklyGoalSessions: number
+}
+
+export interface StudySession {
+  participants: string[],
+  scheduledDate: Date,
+  subject: string,
+  type: string,
+  subjectEmoji: string,
+  participantNames: string[],
+  description: string
+}
+
+export interface StudyProgress {
+  userId: string,
+  date: Date,
+  hoursStudied: number,
+  sessionsCompleted: number
+}
+
+export interface StudyGroupLite {
+  groupId: string,
+  name: string,
+  emoji: string,
+  members: string[],
+  onlineMembers: string[],
+  isActive: boolean
 }

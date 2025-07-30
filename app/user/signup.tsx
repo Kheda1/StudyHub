@@ -14,22 +14,25 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '@/firebase/FirebaseConfig';
 import { collection, doc, setDoc } from 'firebase/firestore';
 import { router } from 'expo-router';
+import { academicLevels } from '@/constants/academicLevels';
+import { AcademicLevel } from '@/types/types';
 
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
-  const [level, setLevel] = useState('highschool');
+  //const [level, setLevel] = useState('ZJC');
   const [interests, setInterests] = useState('');
   const [subjects, setSubjects] = useState('');
   const [methods, setMethods] = useState('');
   const [times, setTimes] = useState('');
 
+  const [level, setLevel] = useState<AcademicLevel | null>(null);
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState([
-    { label: 'High School', value: 'highschool' },
-    { label: 'College', value: 'college' },
-  ]);
+  // const [items, setItems] = useState([
+  //   { label: 'High School', value: 'highschool' },
+  //   { label: 'College', value: 'college' },
+  // ]);
 
   const handleSignUp = async () => {
     try {
@@ -84,12 +87,15 @@ export default function SignupScreen() {
           <DropDownPicker
             open={open}
             value={level}
-            items={items}
+            items={academicLevels}
             setOpen={setOpen}
             setValue={setLevel}
-            setItems={setItems}
-            listMode="SCROLLVIEW"
+            setItems={() => {}} 
             placeholder="Select level"
+            listMode="SCROLLVIEW"
+            dropDownDirection="BOTTOM"
+            style={{ borderColor: '#CCC' }}
+            textStyle={{ fontSize: 14 }}
           />
         </View>
 
@@ -98,15 +104,15 @@ export default function SignupScreen() {
           style={styles.input}
           value={interests}
           onChangeText={setInterests}
-          placeholder="e.g. Science, Tech..."
+          placeholder="e.g. Sciences, Arts, Commercials, Tech..."
         />
 
-        <Text style={styles.label}>Subjects</Text>
+        <Text style={styles.label}>Subjects/Modules</Text>
         <TextInput
           style={styles.input}
           value={subjects}
           onChangeText={setSubjects}
-          placeholder="e.g. Math, Biology..."
+          placeholder="e.g. Math, Biology, Comm Skills..."
         />
 
         <Text style={styles.label}>Preferred Study Methods</Text>
@@ -114,7 +120,7 @@ export default function SignupScreen() {
           style={styles.input}
           value={methods}
           onChangeText={setMethods}
-          placeholder="e.g. Group study, flashcards..."
+          placeholder="e.g. Group study, Goal Setting, Study Buddy..."
         />
 
         <Text style={styles.label}>Study Times</Text>
