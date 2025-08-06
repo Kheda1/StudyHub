@@ -48,17 +48,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="resources"
+        name="Community"
         options={{
-          title: 'Resources',
+          title: 'Community',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="book.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.crop.circle" color={color} />,
+          href: "/Community/"
         }}
       />
     </Tabs>

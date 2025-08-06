@@ -253,10 +253,10 @@ export default function HomeScreen() {
       <ThemedView style={styles.header}>
         <ThemedText style={styles.headerText}>StudyHub</ThemedText>
         <ThemedView style={styles.headerIcons}>
-          <TouchableOpacity style={{ marginRight: wp(4) }} onPress={() => router.push('/resources')}>
+          <TouchableOpacity style={{ marginRight: wp(4) }} onPress={() => console.log('Notifications')}>
             <Ionicons name="notifications-outline" size={wp(6)} color={accent} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/profile')}>
+          <TouchableOpacity onPress={() => router.push('/user/profile')}>
             <Ionicons name="person-circle-outline" size={wp(7.5)} color={accent} />
           </TouchableOpacity>
         </ThemedView>

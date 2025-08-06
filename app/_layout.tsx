@@ -93,7 +93,7 @@ const MainLayout = () => {
           const path = url.replace("studyhub://", "");
           const allowedRoutes = ["/home", "/study-session", "/user/welcome"]; // Add all allowed routes here
           if (allowedRoutes.includes(`/${path}`)) {
-            router.push(`/(tabs)/resources`);
+            router.push(`/Community/${path}`);
           }
         };
 
