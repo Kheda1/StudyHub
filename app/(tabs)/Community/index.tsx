@@ -1,4 +1,3 @@
-// CommunityQuestionList.tsx
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,
@@ -6,6 +5,7 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
+  View,
 } from 'react-native';
 import {
   collection,
@@ -20,7 +20,7 @@ import {
   runTransaction,
   doc,
   Timestamp,
-  where,
+  onSnapshot,
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { router } from 'expo-router';
@@ -28,6 +28,8 @@ import { app } from '@/firebase/FirebaseConfig';
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 import { wp, hp } from '@/constants/common';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import Octicons from '@expo/vector-icons/Octicons';
 
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -41,11 +43,13 @@ type QuestionListItem = {
   score: number;
   upvotes: number;
   downvotes: number;
+  userReaction?: 'upvote' | 'downvote' | null;
+  answersCount: number;
 };
 
 const PAGE_SIZE = 10;
 
-export default function Community() {
+export default function CommunityQuestionList() {
   const [questions, setQuestions] = useState<QuestionListItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
@@ -54,34 +58,38 @@ export default function Community() {
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
   const currentUser = auth.currentUser;
-  const userId = currentUser ? currentUser.uid : null;
+  const userId = currentUser?.uid || null;
 
-  useEffect(() => {
-    loadInitial();
-    // Optionally subscribe to auth state changes to re-render UI when user signs in/out:
-    // const unsub = onAuthStateChanged(auth, (u) => setUserId(u?.uid ?? null));
-    // return () => unsub();
-  }, []);
+  const fetchAnswersCount = async (questionId: string) => {
+    const answersSnapshot = await getDocs(
+      collection(db, 'communityQuestions', questionId, 'answers')
+    );
+    return answersSnapshot.size;
+  };
 
-  // Convert a Firestore doc into QuestionListItem
-  function convertDocToListItem(docSnap: QueryDocumentSnapshot): QuestionListItem {
-    const data = docSnap.data() as any;
+  const convertDocToListItem = async (
+    docSnap: QueryDocumentSnapshot
+  ): Promise<QuestionListItem> => {
+    const data = docSnap.data();
     const createdAt =
-      data.createdAt instanceof Timestamp ? (data.createdAt as Timestamp).toDate() : data.createdAt || null;
+      data.createdAt instanceof Timestamp ? data.createdAt.toDate() : data.createdAt || null;
+    const answersCount = await fetchAnswersCount(docSnap.id);
 
     return {
       id: docSnap.id,
       title: data.title ?? 'Untitled',
       body: data.body ?? '',
-      authorDisplayName: data.authorDisplayName ?? 'Unknown',
+      authorDisplayName: data.authorDisplayName ?? 'Anonymous',
       createdAt,
-      score: typeof data.score === 'number' ? data.score : 0,
-      upvotes: typeof data.upvotes === 'number' ? data.upvotes : 0,
-      downvotes: typeof data.downvotes === 'number' ? data.downvotes : 0,
+      score: data.score || 0,
+      upvotes: data.upvotes || 0,
+      downvotes: data.downvotes || 0,
+      userReaction: null,
+      answersCount,
     };
-  }
+  };
 
-  const loadInitial = useCallback(async () => {
+  const loadInitialQuestions = useCallback(async () => {
     setLoading(true);
     try {
       const q = query(
@@ -89,21 +97,25 @@ export default function Community() {
         orderBy('createdAt', 'desc'),
         limit(PAGE_SIZE)
       );
-      const snap = await getDocs(q);
-      const docs = snap.docs.map(convertDocToListItem);
-      setQuestions(docs);
-      setLastDoc(snap.docs.length ? snap.docs[snap.docs.length - 1] : null);
-      setHasMore(snap.docs.length === PAGE_SIZE);
-    } catch (err) {
-      console.warn('loadInitial error', err);
-      Alert.alert('Error', 'Failed to load community questions.');
+      const snapshot = await getDocs(q);
+      const questionsWithAnswers = await Promise.all(
+        snapshot.docs.map(convertDocToListItem)
+      );
+
+      setQuestions(questionsWithAnswers);
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error loading questions:', error);
+      Alert.alert('Error', 'Failed to load questions. Please try again.');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const loadMore = useCallback(async () => {
+  const loadMoreQuestions = useCallback(async () => {
     if (!hasMore || loadingMore || !lastDoc) return;
+
     setLoadingMore(true);
     try {
       const q = query(
@@ -112,397 +124,432 @@ export default function Community() {
         startAfter(lastDoc),
         limit(PAGE_SIZE)
       );
-      const snap = await getDocs(q);
-      const docs = snap.docs.map(convertDocToListItem);
-      setQuestions((prev) => [...prev, ...docs]);
-      setLastDoc(snap.docs.length ? snap.docs[snap.docs.length - 1] : lastDoc);
-      setHasMore(snap.docs.length === PAGE_SIZE);
-    } catch (err) {
-      console.warn('loadMore error', err);
+      const snapshot = await getDocs(q);
+      const newQuestions = await Promise.all(
+        snapshot.docs.map(convertDocToListItem)
+      );
+
+      setQuestions((prev) => [...prev, ...newQuestions]);
+      setLastDoc(snapshot.docs[snapshot.docs.length - 1] || null);
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+    } catch (error) {
+      console.error('Error loading more questions:', error);
     } finally {
       setLoadingMore(false);
     }
   }, [hasMore, lastDoc, loadingMore]);
 
-  const onRefresh = useCallback(async () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadInitial();
+    await loadInitialQuestions();
     setRefreshing(false);
-  }, [loadInitial]);
+  }, [loadInitialQuestions]);
 
-  // Safe navigation using path strings (avoid route name mismatches)
-  function navigateToQuestionDetail(id: string) {
-    try {
-      router.push({
-        pathname: '/Community/[id]',
-        params: { id },
-      } as const);
-    } catch (err) {
-      console.warn('Navigation failed, falling back to /Community', err);
-      router.replace('/(tabs)/Community/index');
-    }
-  }
+  useEffect(() => {
+    loadInitialQuestions();
+  }, []);
 
-  // Toggle downvote transaction
-  async function toggleDownvote(questionId: string) {
-    const u = auth.currentUser;
-    if (!u) {
-      Alert.alert('Sign in required', 'Please sign in to downvote.');
+  // Set up real-time listeners for answers count updates
+  useEffect(() => {
+    if (questions.length === 0) return;
+
+    const unsubscribeFns = questions.map((question) => {
+      const answersRef = collection(db, 'communityQuestions', question.id, 'answers');
+      return onSnapshot(answersRef, (snapshot) => {
+        setQuestions((prev) =>
+          prev.map((q) =>
+            q.id === question.id ? { ...q, answersCount: snapshot.size } : q
+          )
+        );
+      });
+    });
+
+    return () => unsubscribeFns.forEach((unsubscribe) => unsubscribe());
+  }, [questions]);
+
+  const handleUpvote = async (questionId: string) => {
+    if (!userId) {
+      Alert.alert('Sign In Required', 'Please sign in to vote');
       return;
     }
-    const uid = u.uid;
-    const questionRef = doc(db, 'communityQuestions', questionId);
-    const reactionRef = doc(db, 'communityQuestions', questionId, 'reactions', uid);
 
     try {
-      await runTransaction(db, async (t) => {
-        const qSnap = await t.get(questionRef);
-        if (!qSnap.exists()) throw new Error('Question not found');
+      const questionRef = doc(db, 'communityQuestions', questionId);
+      const reactionRef = doc(db, 'communityQuestions', questionId, 'reactions', userId);
 
-        const rSnap = await t.get(reactionRef);
-        const currentDownvotes = typeof qSnap.data()?.downvotes === 'number' ? qSnap.data()!.downvotes : 0;
-        const currentUpvotes = typeof qSnap.data()?.upvotes === 'number' ? qSnap.data()!.upvotes : 0;
+      await runTransaction(db, async (transaction) => {
+        const questionDoc = await transaction.get(questionRef);
+        if (!questionDoc.exists()) throw new Error('Question not found');
 
-        if (rSnap.exists()) {
-          // Reaction exists -> remove it (toggle off)
-          const existing = rSnap.data();
-          if (existing.type === 'downvote') {
-            t.delete(reactionRef);
-            t.update(questionRef, { 
-              downvotes: currentDownvotes - 1,
-              score: (currentUpvotes) - (currentDownvotes - 1)
-            });
-          } else if (existing.type === 'upvote') {
-            // Switch from upvote to downvote
-            t.update(reactionRef, {
-              type: 'downvote',
-              createdAt: new Date(),
-            });
-            t.update(questionRef, { 
+        const reactionDoc = await transaction.get(reactionRef);
+        const currentUpvotes = questionDoc.data()?.upvotes || 0;
+        const currentDownvotes = questionDoc.data()?.downvotes || 0;
+
+        if (reactionDoc.exists()) {
+          const existingReaction = reactionDoc.data()?.type;
+          if (existingReaction === 'upvote') {
+            transaction.delete(reactionRef);
+            transaction.update(questionRef, {
               upvotes: currentUpvotes - 1,
-              downvotes: currentDownvotes + 1,
-              score: (currentUpvotes - 1) - (currentDownvotes + 1)
+              score: (currentUpvotes - 1) - currentDownvotes,
             });
           } else {
-            // other reaction type: delete without changing score
-            t.delete(reactionRef);
-          }
-        } else {
-          // Create new downvote
-          t.set(reactionRef, {
-            userId: uid,
-            targetId: questionId,
-            targetType: 'question',
-            type: 'downvote',
-            createdAt: new Date(),
-          });
-          t.update(questionRef, { 
-            downvotes: currentDownvotes + 1,
-            score: currentUpvotes - (currentDownvotes + 1)
-          });
-        }
-      });
-
-      // Optimistic local update
-      setQuestions((prev) =>
-        prev.map((q) => {
-          if (q.id !== questionId) return q;
-          const newDownvotes = q.downvotes + 1;
-          const newScore = q.upvotes - newDownvotes;
-          return { ...q, downvotes: newDownvotes, score: newScore };
-        })
-      );
-    } catch (err) {
-      console.warn('toggleDownvote error', err);
-      Alert.alert('Error', 'Failed to toggle downvote. Try again.');
-    }
-  }
-
-  // Toggle upvote transaction:
-  // reaction doc path: communityQuestions/{questionId}/reactions/{userId}
-  async function toggleUpvote(questionId: string) {
-    const u = auth.currentUser;
-    if (!u) {
-      Alert.alert('Sign in required', 'Please sign in to upvote.');
-      return;
-    }
-    const uid = u.uid;
-    const questionRef = doc(db, 'communityQuestions', questionId);
-    const reactionRef = doc(db, 'communityQuestions', questionId, 'reactions', uid);
-
-    try {
-      await runTransaction(db, async (t) => {
-        const qSnap = await t.get(questionRef);
-        if (!qSnap.exists()) throw new Error('Question not found');
-
-        const rSnap = await t.get(reactionRef);
-        const currentUpvotes = typeof qSnap.data()?.upvotes === 'number' ? qSnap.data()!.upvotes : 0;
-        const currentDownvotes = typeof qSnap.data()?.downvotes === 'number' ? qSnap.data()!.downvotes : 0;
-
-        if (rSnap.exists()) {
-          // Reaction exists -> remove it (toggle off) or switch
-          const existing = rSnap.data();
-          if (existing.type === 'upvote') {
-            t.delete(reactionRef);
-            t.update(questionRef, { 
-              upvotes: currentUpvotes - 1,
-              score: (currentUpvotes - 1) - currentDownvotes
-            });
-          } else if (existing.type === 'downvote') {
-            // Switch from downvote to upvote
-            t.update(reactionRef, {
-              type: 'upvote',
-              createdAt: new Date(),
-            });
-            t.update(questionRef, { 
+            transaction.set(reactionRef, { type: 'upvote' });
+            transaction.update(questionRef, {
               upvotes: currentUpvotes + 1,
               downvotes: currentDownvotes - 1,
-              score: (currentUpvotes + 1) - (currentDownvotes - 1)
+              score: (currentUpvotes + 1) - (currentDownvotes - 1),
             });
-          } else {
-            // other reaction type: delete without changing score
-            t.delete(reactionRef);
           }
         } else {
-          // Create new upvote
-          t.set(reactionRef, {
-            userId: uid,
-            targetId: questionId,
-            targetType: 'question',
-            type: 'upvote',
-            createdAt: new Date(),
-          });
-          t.update(questionRef, { 
+          transaction.set(reactionRef, { type: 'upvote' });
+          transaction.update(questionRef, {
             upvotes: currentUpvotes + 1,
-            score: (currentUpvotes + 1) - currentDownvotes
+            score: (currentUpvotes + 1) - currentDownvotes,
           });
         }
       });
 
-      // Optimistic local update: adjust local questions array
       setQuestions((prev) =>
         prev.map((q) => {
           if (q.id !== questionId) return q;
-          const newUpvotes = q.upvotes + 1;
-          const newScore = newUpvotes - q.downvotes;
-          // Note: this optimistic update assumes a create; could be off if toggling off
-          // To keep it simple, re-fetch single doc in production to be accurate.
-          return { ...q, upvotes: newUpvotes, score: newScore };
+
+          const wasUpvoted = q.userReaction === 'upvote';
+          const wasDownvoted = q.userReaction === 'downvote';
+
+          return {
+            ...q,
+            upvotes: wasUpvoted ? q.upvotes - 1 : q.upvotes + 1,
+            downvotes: wasDownvoted ? q.downvotes - 1 : q.downvotes,
+            score: wasUpvoted
+              ? q.upvotes - 1 - q.downvotes
+              : wasDownvoted
+              ? q.upvotes + 1 - (q.downvotes - 1)
+              : q.upvotes + 1 - q.downvotes,
+            userReaction: wasUpvoted ? null : 'upvote',
+          };
         })
       );
-    } catch (err) {
-      console.warn('toggleUpvote error', err);
-      Alert.alert('Error', 'Failed to toggle upvote. Try again.');
+    } catch (error) {
+      console.error('Error upvoting:', error);
+      Alert.alert('Error', 'Failed to upvote. Please try again.');
     }
-  }
-
-  // Render single question
-  const renderItem = ({ item }: { item: QuestionListItem }) => {
-    return (
-      <ThemedView style={styles.card}>
-        <TouchableOpacity onPress={() => navigateToQuestionDetail(item.id)}>
-          <ThemedText style={styles.title}>{item.title}</ThemedText>
-        </TouchableOpacity>
-        <ThemedText numberOfLines={2} style={styles.body}>
-          {item.body}
-        </ThemedText>
-        <ThemedView style={styles.metaRow}>
-          <ThemedText style={styles.metaText}>{item.authorDisplayName}</ThemedText>
-          {item.createdAt ? (
-            <ThemedText style={styles.metaText}>{item.createdAt.toLocaleDateString()}</ThemedText>
-          ) : null}
-        </ThemedView>
-
-        <ThemedView style={styles.actionsRow}>
-          {/* Vote buttons visible only to authenticated users */}
-          <ThemedView style={styles.actionsRows}>
-          {userId ? (
-            <>
-              <TouchableOpacity onPress={() => toggleUpvote(item.id)} style={styles.actionBtn}>
-                <ThemedText style={styles.actionText}>↑</ThemedText>
-              </TouchableOpacity>
-              
-              <ThemedText style={styles.voteCount}>{item.upvotes ?? 0}</ThemedText>
-              
-              <ThemedView style={styles.divider} />
-              
-              <TouchableOpacity onPress={() => toggleDownvote(item.id)} style={styles.actionBtn}>
-                <ThemedText style={styles.actionText}>↓ Vote</ThemedText>
-              </TouchableOpacity>
-              
-              <ThemedText style={styles.voteCount}>{item.downvotes ?? 0}</ThemedText>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity
-                onPress={() => Alert.alert('Sign in required', 'Please sign in to vote.')}
-                style={styles.actionBtn}
-              >
-                <ThemedText style={styles.actionText}>↑ Vote</ThemedText>
-              </TouchableOpacity>
-              
-              <ThemedText style={styles.voteCount}>{item.upvotes ?? 0}</ThemedText>
-              
-              <ThemedView style={styles.divider} />
-              
-              <TouchableOpacity
-                onPress={() => Alert.alert('Sign in required', 'Please sign in to vote.')}
-                style={styles.actionBtn}
-              >
-                <ThemedText style={styles.actionText}>↓ Vote</ThemedText>
-              </TouchableOpacity>
-              
-              <ThemedText style={styles.voteCount}>{item.downvotes ?? 0}</ThemedText>
-            </>
-          )}
-          </ThemedView>
-
-          <ThemedView style={styles.actionsRows}>
-            <TouchableOpacity
-              onPress={() => navigateToQuestionDetail(item.id)}
-              style={[styles.actionBtn, styles.secondary]}
-            >
-              <ThemedText style={styles.actionText}>💬 Answers</ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
-
-        </ThemedView>
-      </ThemedView>
-    );
   };
 
+  const handleDownvote = async (questionId: string) => {
+    if (!userId) {
+      Alert.alert('Sign In Required', 'Please sign in to vote');
+      return;
+    }
+
+    try {
+      const questionRef = doc(db, 'communityQuestions', questionId);
+      const reactionRef = doc(db, 'communityQuestions', questionId, 'reactions', userId);
+
+      await runTransaction(db, async (transaction) => {
+        const questionDoc = await transaction.get(questionRef);
+        if (!questionDoc.exists()) throw new Error('Question not found');
+
+        const reactionDoc = await transaction.get(reactionRef);
+        const currentUpvotes = questionDoc.data()?.upvotes || 0;
+        const currentDownvotes = questionDoc.data()?.downvotes || 0;
+
+        if (reactionDoc.exists()) {
+          const existingReaction = reactionDoc.data()?.type;
+          if (existingReaction === 'downvote') {
+            transaction.delete(reactionRef);
+            transaction.update(questionRef, {
+              downvotes: currentDownvotes - 1,
+              score: currentUpvotes - (currentDownvotes - 1),
+            });
+          } else {
+            transaction.set(reactionRef, { type: 'downvote' });
+            transaction.update(questionRef, {
+              upvotes: currentUpvotes - 1,
+              downvotes: currentDownvotes + 1,
+              score: (currentUpvotes - 1) - (currentDownvotes + 1),
+            });
+          }
+        } else {
+          transaction.set(reactionRef, { type: 'downvote' });
+          transaction.update(questionRef, {
+            downvotes: currentDownvotes + 1,
+            score: currentUpvotes - (currentDownvotes + 1),
+          });
+        }
+      });
+
+      setQuestions((prev) =>
+        prev.map((q) => {
+          if (q.id !== questionId) return q;
+
+          const wasUpvoted = q.userReaction === 'upvote';
+          const wasDownvoted = q.userReaction === 'downvote';
+
+          return {
+            ...q,
+            upvotes: wasUpvoted ? q.upvotes - 1 : q.upvotes,
+            downvotes: wasDownvoted ? q.downvotes - 1 : q.downvotes + 1,
+            score: wasDownvoted
+              ? q.upvotes - (q.downvotes - 1)
+              : wasUpvoted
+              ? q.upvotes - 1 - (q.downvotes + 1)
+              : q.upvotes - (q.downvotes + 1),
+            userReaction: wasDownvoted ? null : 'downvote',
+          };
+        })
+      );
+    } catch (error) {
+      console.error('Error downvoting:', error);
+      Alert.alert('Error', 'Failed to downvote. Please try again.');
+    }
+  };
+
+  const navigateToQuestionDetail = (questionId: string) => {
+    router.push({
+      pathname: '/Community/[id]',
+      params: { id: questionId },
+    });
+  };
+
+  const renderQuestionItem = ({ item }: { item: QuestionListItem }) => (
+    <ThemedView style={styles.questionCard}>
+      <TouchableOpacity onPress={() => navigateToQuestionDetail(item.id)}>
+        <ThemedText style={styles.questionTitle}>{item.title}</ThemedText>
+        <ThemedText style={styles.questionBody} numberOfLines={2}>
+          {item.body}
+        </ThemedText>
+      </TouchableOpacity>
+
+      <View style={styles.questionFooter}>
+        <View style={styles.userInfo}>
+          <Octicons name="person" size={wp(4)} color="#666" />
+          <ThemedText style={styles.metaText}>{item.authorDisplayName}</ThemedText>
+          
+          {item.createdAt && (
+            <>
+              <Octicons name="dot-fill" size={wp(2)} color="#999" style={styles.dotSeparator} />
+              <Octicons name="clock" size={wp(3.5)} color="#666" />
+              <ThemedText style={styles.metaText}>
+                {item.createdAt.toLocaleDateString()}
+              </ThemedText>
+            </>
+          )}
+        </View>
+
+        <View style={styles.actionsContainer}>
+          <View style={styles.voteContainer}>
+            <TouchableOpacity 
+              onPress={() => handleUpvote(item.id)}
+              style={styles.voteButton}
+            >
+              <Ionicons
+                name={item.userReaction === 'upvote' ? 'arrow-up-circle' : 'arrow-up-circle-outline'}
+                size={wp(6)}
+                color={item.userReaction === 'upvote' ? '#4CAF50' : '#666'}
+              />
+            </TouchableOpacity>
+            
+            <ThemedText style={styles.voteCount}>{item.upvotes}</ThemedText>
+            
+            <View style={styles.voteDivider} />
+            
+            <TouchableOpacity 
+              onPress={() => handleDownvote(item.id)}
+              style={styles.voteButton}
+            >
+              <Ionicons
+                name={item.userReaction === 'downvote' ? 'arrow-down-circle' : 'arrow-down-circle-outline'}
+                size={wp(6)}
+                color={item.userReaction === 'downvote' ? '#F44336' : '#666'}
+              />
+            </TouchableOpacity>
+            
+            <ThemedText style={styles.voteCount}>{item.downvotes}</ThemedText>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => navigateToQuestionDetail(item.id)}
+            style={styles.commentButton}
+          >
+            <Octicons name="comment" size={wp(4.5)} color="#666" />
+            <ThemedText style={styles.commentText}>
+              {item.answersCount} {item.answersCount === 1 ? 'Answer' : 'Answers'}
+            </ThemedText>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ThemedView>
+  );
+
   return (
-    <ThemedView style={{ flex: 1 }}>
-      <ThemedView style={styles.headerContainer}>
-        <ThemedText style={styles.headerTitle}>Community</ThemedText>
-      </ThemedView>
-      
-      <ThemedView style={{ flex: 1 }}>
-        {loading ? (
-          <ActivityIndicator style={{ marginTop: hp(3) }} />
-        ) : questions.length === 0 ? (
-          // Add this empty state
-          <ThemedView style={styles.emptyState}>
-            <ThemedText style={styles.emptyText}>No community questions yet</ThemedText>
-            <ThemedText style={styles.emptySubtext}>Be the first to ask a question!</ThemedText>
-          </ThemedView>
-        ) : (
-          <FlatList
-            data={questions}
-            renderItem={renderItem}
-            keyExtractor={(item) => item.id}
-            onEndReached={loadMore}
-            onEndReachedThreshold={0.5}
-            ListFooterComponent={loadingMore ? <ActivityIndicator /> : null}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
-      </ThemedView>
+    <ThemedView style={styles.container}>
+      <View style={styles.header}>
+        <Ionicons name="people" size={wp(6)} color="#333" />
+        <ThemedText style={styles.headerTitle}>Community Questions</ThemedText>
+      </View>
+
+      {loading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" />
+        </View>
+      ) : questions.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="help-circle-outline" size={wp(12)} color="#999" />
+          <ThemedText style={styles.emptyTitle}>No Questions Yet</ThemedText>
+          <ThemedText style={styles.emptySubtitle}>
+            Be the first to ask a question!
+          </ThemedText>
+        </View>
+      ) : (
+        <FlatList
+          data={questions}
+          renderItem={renderQuestionItem}
+          keyExtractor={item => item.id}
+          onEndReached={loadMoreQuestions}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? <ActivityIndicator style={styles.loadingMore} /> : null
+          }
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerContainer: {
-    paddingHorizontal: wp(4),
-    paddingVertical: wp(4),
-    borderBottomWidth: 0.5,
-    borderBottomColor: '#E5E7EB',
+  container: {
+    flex: 1,
+    marginVertical: wp(4),
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: wp(4),
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#ddd',
   },
   headerTitle: {
-    fontSize: wp(6),
-    fontWeight: 'semibold',
-    marginVertical: wp(4),
-    //textAlign: 'center',
+    fontSize: wp(5),
+    fontWeight: '600',
+    marginLeft: wp(3),
   },
-  card: {
-    borderRadius: wp(2),
-    padding: wp(3),
-    marginHorizontal: wp(3),
-    marginVertical: wp(2),
+  questionCard: {
     backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: wp(1),
-    elevation: 1,
-  },
-  title: { 
-    fontSize: wp(4), 
-    fontWeight: '600' 
-  },
-  body: { 
-    marginTop: wp(1.5), 
-    color: '#333' 
-  },
-  metaRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    marginTop: wp(2) 
-  },
-  metaText: { 
-    color: '#666', 
-    fontSize: wp(3) 
-  },
-  actionsRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    marginTop: wp(2.5) 
-  },
-  actionsRows: { 
-    backgroundColor: '#f0f0f0dd',
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    marginTop: wp(2.5),
     borderRadius: wp(2),
-    marginHorizontal: wp(1.5),
+    marginHorizontal: wp(4),
+    marginVertical: wp(2),
+    padding: wp(4),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: wp(0.5),
+    elevation: 2,
   },
-  actionBtn: { 
-    paddingVertical: wp(1.5), 
-    paddingHorizontal: wp(2.5), 
-    borderRadius: wp(1.5) 
-  },
-  actionText: {
-    fontSize: wp(3.5),
-  },
-  secondary: { 
-    marginLeft: wp(3) 
-  },
-  voteCount: { 
-    marginLeft: wp(1), 
-    marginRight: wp(1), 
+  questionTitle: {
+    fontSize: wp(4.5),
     fontWeight: '600',
+    marginBottom: wp(2),
+  },
+  questionBody: {
+    fontSize: wp(4),
+    color: '#444',
+    marginBottom: wp(4),
+    lineHeight: wp(5.5),
+  },
+  questionFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#eee',
+    paddingTop: wp(3),
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: wp(3),
+  },
+  metaText: {
     fontSize: wp(3.5),
-    minWidth: wp(3),
+    color: '#666',
+    marginLeft: wp(1),
+    marginRight: wp(2),
+  },
+  dotSeparator: {
+    marginHorizontal: wp(2),
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  voteContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: wp(5),
+    paddingHorizontal: wp(2),
+    paddingVertical: wp(1),
+  },
+  voteButton: {
+    padding: wp(1),
+  },
+  voteCount: {
+    fontSize: wp(4),
+    fontWeight: '600',
+    minWidth: wp(6),
     textAlign: 'center',
+    marginHorizontal: wp(1),
   },
-  divider: {
+  voteDivider: {
     width: 1,
-    height: wp(4),
-    backgroundColor: '#a2a2a2ff',
+    height: wp(5),
+    backgroundColor: '#ddd',
+    marginHorizontal: wp(1),
   },
-  scoreText: { 
-    marginLeft: wp(2), 
-    marginRight: wp(2), 
-    fontWeight: '600',
+  commentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: wp(5),
+    paddingHorizontal: wp(3),
+    paddingVertical: wp(1.5),
+  },
+  commentText: {
     fontSize: wp(3.5),
+    color: '#666',
+    marginLeft: wp(1.5),
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingMore: {
+    marginVertical: wp(4),
   },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: wp(5),
+    padding: wp(8),
   },
-  emptyText: {
+  emptyTitle: {
     fontSize: wp(4.5),
     fontWeight: '600',
+    marginTop: wp(4),
     color: '#333',
-    marginBottom: wp(2),
   },
-  emptySubtext: {
-    fontSize: wp(3.5),
+  emptySubtitle: {
+    fontSize: wp(4),
     color: '#666',
+    marginTop: wp(2),
     textAlign: 'center',
+  },
+  listContent: {
+    paddingBottom: wp(4),
   },
 });

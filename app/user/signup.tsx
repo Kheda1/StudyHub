@@ -16,6 +16,7 @@ import { collection, doc, setDoc } from 'firebase/firestore';
 import { router } from 'expo-router';
 import { academicLevels } from '@/constants/academicLevels';
 import { AcademicLevel } from '@/types/types';
+import { wp } from '@/constants/common';
 
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
@@ -57,10 +58,11 @@ export default function SignupScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
     >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: wp(8) }]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
         <Text style={styles.label}>Email</Text>
         <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Email" />
 
