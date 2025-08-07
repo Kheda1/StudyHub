@@ -41,6 +41,7 @@ export default function SignupScreen() {
       const uid = userCredential.user.uid;
 
       await setDoc(doc(db, 'users', uid), {
+        uid,
         email,
         phone,
         level,
@@ -50,7 +51,8 @@ export default function SignupScreen() {
         times,
       });
 
-      router.replace('./(tabs)/Home');
+      alert('Signup successful!');
+      router.replace('/(tabs)/Home');
     } catch (err: any) {
       alert('Signup failed: ' + err.message);
     }

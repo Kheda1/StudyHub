@@ -424,7 +424,7 @@ export default function CommunityQuestionList() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    marginVertical: wp(4),
+    marginVertical: hp(2),
   },
   header: {
     flexDirection: 'row',
