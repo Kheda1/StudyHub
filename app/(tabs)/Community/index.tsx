@@ -1,8 +1,6 @@
 // CommunityQuestionList.tsx
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
@@ -27,6 +25,9 @@ import {
 import { getAuth } from 'firebase/auth';
 import { router } from 'expo-router';
 import { app } from '@/firebase/FirebaseConfig';
+import { ThemedView } from '@/components/ThemedView';
+import { ThemedText } from '@/components/ThemedText';
+import { wp, hp } from '@/constants/common';
 
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -38,6 +39,8 @@ type QuestionListItem = {
   authorDisplayName?: string;
   createdAt?: Date | null;
   score: number;
+  upvotes: number;
+  downvotes: number;
 };
 
 const PAGE_SIZE = 10;
@@ -73,6 +76,8 @@ export default function Community() {
       authorDisplayName: data.authorDisplayName ?? 'Unknown',
       createdAt,
       score: typeof data.score === 'number' ? data.score : 0,
+      upvotes: typeof data.upvotes === 'number' ? data.upvotes : 0,
+      downvotes: typeof data.downvotes === 'number' ? data.downvotes : 0,
     };
   }
 
@@ -138,6 +143,81 @@ export default function Community() {
     }
   }
 
+  // Toggle downvote transaction
+  async function toggleDownvote(questionId: string) {
+    const u = auth.currentUser;
+    if (!u) {
+      Alert.alert('Sign in required', 'Please sign in to downvote.');
+      return;
+    }
+    const uid = u.uid;
+    const questionRef = doc(db, 'communityQuestions', questionId);
+    const reactionRef = doc(db, 'communityQuestions', questionId, 'reactions', uid);
+
+    try {
+      await runTransaction(db, async (t) => {
+        const qSnap = await t.get(questionRef);
+        if (!qSnap.exists()) throw new Error('Question not found');
+
+        const rSnap = await t.get(reactionRef);
+        const currentDownvotes = typeof qSnap.data()?.downvotes === 'number' ? qSnap.data()!.downvotes : 0;
+        const currentUpvotes = typeof qSnap.data()?.upvotes === 'number' ? qSnap.data()!.upvotes : 0;
+
+        if (rSnap.exists()) {
+          // Reaction exists -> remove it (toggle off)
+          const existing = rSnap.data();
+          if (existing.type === 'downvote') {
+            t.delete(reactionRef);
+            t.update(questionRef, { 
+              downvotes: currentDownvotes - 1,
+              score: (currentUpvotes) - (currentDownvotes - 1)
+            });
+          } else if (existing.type === 'upvote') {
+            // Switch from upvote to downvote
+            t.update(reactionRef, {
+              type: 'downvote',
+              createdAt: new Date(),
+            });
+            t.update(questionRef, { 
+              upvotes: currentUpvotes - 1,
+              downvotes: currentDownvotes + 1,
+              score: (currentUpvotes - 1) - (currentDownvotes + 1)
+            });
+          } else {
+            // other reaction type: delete without changing score
+            t.delete(reactionRef);
+          }
+        } else {
+          // Create new downvote
+          t.set(reactionRef, {
+            userId: uid,
+            targetId: questionId,
+            targetType: 'question',
+            type: 'downvote',
+            createdAt: new Date(),
+          });
+          t.update(questionRef, { 
+            downvotes: currentDownvotes + 1,
+            score: currentUpvotes - (currentDownvotes + 1)
+          });
+        }
+      });
+
+      // Optimistic local update
+      setQuestions((prev) =>
+        prev.map((q) => {
+          if (q.id !== questionId) return q;
+          const newDownvotes = q.downvotes + 1;
+          const newScore = q.upvotes - newDownvotes;
+          return { ...q, downvotes: newDownvotes, score: newScore };
+        })
+      );
+    } catch (err) {
+      console.warn('toggleDownvote error', err);
+      Alert.alert('Error', 'Failed to toggle downvote. Try again.');
+    }
+  }
+
   // Toggle upvote transaction:
   // reaction doc path: communityQuestions/{questionId}/reactions/{userId}
   async function toggleUpvote(questionId: string) {
@@ -156,18 +236,29 @@ export default function Community() {
         if (!qSnap.exists()) throw new Error('Question not found');
 
         const rSnap = await t.get(reactionRef);
-        const currentScore = typeof qSnap.data()?.score === 'number' ? qSnap.data()!.score : 0;
+        const currentUpvotes = typeof qSnap.data()?.upvotes === 'number' ? qSnap.data()!.upvotes : 0;
+        const currentDownvotes = typeof qSnap.data()?.downvotes === 'number' ? qSnap.data()!.downvotes : 0;
 
         if (rSnap.exists()) {
-          // Reaction exists -> remove it (toggle off)
+          // Reaction exists -> remove it (toggle off) or switch
           const existing = rSnap.data();
           if (existing.type === 'upvote') {
             t.delete(reactionRef);
-            t.update(questionRef, { score: currentScore - 1 });
+            t.update(questionRef, { 
+              upvotes: currentUpvotes - 1,
+              score: (currentUpvotes - 1) - currentDownvotes
+            });
           } else if (existing.type === 'downvote') {
-            // If previously downvoted, removing downvote increases score by +1
-            t.delete(reactionRef);
-            t.update(questionRef, { score: currentScore + 1 });
+            // Switch from downvote to upvote
+            t.update(reactionRef, {
+              type: 'upvote',
+              createdAt: new Date(),
+            });
+            t.update(questionRef, { 
+              upvotes: currentUpvotes + 1,
+              downvotes: currentDownvotes - 1,
+              score: (currentUpvotes + 1) - (currentDownvotes - 1)
+            });
           } else {
             // other reaction type: delete without changing score
             t.delete(reactionRef);
@@ -181,7 +272,10 @@ export default function Community() {
             type: 'upvote',
             createdAt: new Date(),
           });
-          t.update(questionRef, { score: currentScore + 1 });
+          t.update(questionRef, { 
+            upvotes: currentUpvotes + 1,
+            score: (currentUpvotes + 1) - currentDownvotes
+          });
         }
       });
 
@@ -189,10 +283,11 @@ export default function Community() {
       setQuestions((prev) =>
         prev.map((q) => {
           if (q.id !== questionId) return q;
-          const newScore = q.score !== undefined ? q.score + 1 : 1; // rough optimistic increment
+          const newUpvotes = q.upvotes + 1;
+          const newScore = newUpvotes - q.downvotes;
           // Note: this optimistic update assumes a create; could be off if toggling off
           // To keep it simple, re-fetch single doc in production to be accurate.
-          return { ...q, score: newScore };
+          return { ...q, upvotes: newUpvotes, score: newScore };
         })
       );
     } catch (err) {
@@ -204,135 +299,210 @@ export default function Community() {
   // Render single question
   const renderItem = ({ item }: { item: QuestionListItem }) => {
     return (
-      <View style={styles.card}>
+      <ThemedView style={styles.card}>
         <TouchableOpacity onPress={() => navigateToQuestionDetail(item.id)}>
-          <Text style={styles.title}>{item.title}</Text>
+          <ThemedText style={styles.title}>{item.title}</ThemedText>
         </TouchableOpacity>
-        <Text numberOfLines={2} style={styles.body}>
+        <ThemedText numberOfLines={2} style={styles.body}>
           {item.body}
-        </Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaText}>{item.authorDisplayName}</Text>
-          {item.createdAt ? <Text style={styles.metaText}>{item.createdAt.toLocaleDateString()}</Text> : null}
-        </View>
+        </ThemedText>
+        <ThemedView style={styles.metaRow}>
+          <ThemedText style={styles.metaText}>{item.authorDisplayName}</ThemedText>
+          {item.createdAt ? (
+            <ThemedText style={styles.metaText}>{item.createdAt.toLocaleDateString()}</ThemedText>
+          ) : null}
+        </ThemedView>
 
-        <View style={styles.actionsRow}>
-          {/* Upvote button visible only to authenticated users */}
+        <ThemedView style={styles.actionsRow}>
+          {/* Vote buttons visible only to authenticated users */}
+          <ThemedView style={styles.actionsRows}>
           {userId ? (
-            <TouchableOpacity onPress={() => toggleUpvote(item.id)} style={styles.actionBtn}>
-              <Text>▲ Upvote</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity onPress={() => toggleUpvote(item.id)} style={styles.actionBtn}>
+                <ThemedText style={styles.actionText}>↑</ThemedText>
+              </TouchableOpacity>
+              
+              <ThemedText style={styles.voteCount}>{item.upvotes ?? 0}</ThemedText>
+              
+              <ThemedView style={styles.divider} />
+              
+              <TouchableOpacity onPress={() => toggleDownvote(item.id)} style={styles.actionBtn}>
+                <ThemedText style={styles.actionText}>↓ Vote</ThemedText>
+              </TouchableOpacity>
+              
+              <ThemedText style={styles.voteCount}>{item.downvotes ?? 0}</ThemedText>
+            </>
           ) : (
-            <TouchableOpacity
-              onPress={() => Alert.alert('Sign in required', 'Please sign in to upvote or answer.')}
-              style={styles.actionBtn}
-            >
-              <Text>▲ Upvote</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                onPress={() => Alert.alert('Sign in required', 'Please sign in to vote.')}
+                style={styles.actionBtn}
+              >
+                <ThemedText style={styles.actionText}>↑ Vote</ThemedText>
+              </TouchableOpacity>
+              
+              <ThemedText style={styles.voteCount}>{item.upvotes ?? 0}</ThemedText>
+              
+              <ThemedView style={styles.divider} />
+              
+              <TouchableOpacity
+                onPress={() => Alert.alert('Sign in required', 'Please sign in to vote.')}
+                style={styles.actionBtn}
+              >
+                <ThemedText style={styles.actionText}>↓ Vote</ThemedText>
+              </TouchableOpacity>
+              
+              <ThemedText style={styles.voteCount}>{item.downvotes ?? 0}</ThemedText>
+            </>
           )}
+          </ThemedView>
 
-          <Text style={styles.scoreText}>{item.score ?? 0}</Text>
+          <ThemedView style={styles.actionsRows}>
+            <TouchableOpacity
+              onPress={() => navigateToQuestionDetail(item.id)}
+              style={[styles.actionBtn, styles.secondary]}
+            >
+              <ThemedText style={styles.actionText}>💬 Answers</ThemedText>
+            </TouchableOpacity>
+          </ThemedView>
 
-          <TouchableOpacity
-            onPress={() => navigateToQuestionDetail(item.id)}
-            style={[styles.actionBtn, styles.secondary]}
-          >
-            <Text>💬 Answers</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        </ThemedView>
+      </ThemedView>
     );
   };
 
   return (
-    <View style={{ flex: 1 }}>
-      {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} />
-      ) : questions.length === 0 ? (
-        // Add this empty state
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>No community questions yet</Text>
-          <Text style={styles.emptySubtext}>Be the first to ask a question!</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={questions}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={loadingMore ? <ActivityIndicator /> : null}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-        />
-      )}
-    </View>
+    <ThemedView style={{ flex: 1 }}>
+      <ThemedView style={styles.headerContainer}>
+        <ThemedText style={styles.headerTitle}>Community</ThemedText>
+      </ThemedView>
+      
+      <ThemedView style={{ flex: 1 }}>
+        {loading ? (
+          <ActivityIndicator style={{ marginTop: hp(3) }} />
+        ) : questions.length === 0 ? (
+          // Add this empty state
+          <ThemedView style={styles.emptyState}>
+            <ThemedText style={styles.emptyText}>No community questions yet</ThemedText>
+            <ThemedText style={styles.emptySubtext}>Be the first to ask a question!</ThemedText>
+          </ThemedView>
+        ) : (
+          <FlatList
+            data={questions}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.id}
+            onEndReached={loadMore}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={loadingMore ? <ActivityIndicator /> : null}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </ThemedView>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
+  headerContainer: {
+    paddingHorizontal: wp(4),
+    paddingVertical: wp(4),
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerTitle: {
+    fontSize: wp(6),
+    fontWeight: 'semibold',
+    marginVertical: wp(4),
+    //textAlign: 'center',
+  },
   card: {
-    borderRadius: 8,
-    padding: 12,
-    marginHorizontal: 12,
-    marginVertical: 8,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginHorizontal: wp(3),
+    marginVertical: wp(2),
     backgroundColor: '#fff',
     shadowColor: '#000',
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: wp(1),
     elevation: 1,
   },
   title: { 
-    fontSize: 16, 
+    fontSize: wp(4), 
     fontWeight: '600' 
   },
   body: { 
-    marginTop: 6, 
+    marginTop: wp(1.5), 
     color: '#333' 
   },
   metaRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
-    marginTop: 8 
+    marginTop: wp(2) 
   },
   metaText: { 
     color: '#666', 
-    fontSize: 12 
+    fontSize: wp(3) 
   },
   actionsRow: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    marginTop: 10 
+    marginTop: wp(2.5) 
+  },
+  actionsRows: { 
+    backgroundColor: '#f0f0f0dd',
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginTop: wp(2.5),
+    borderRadius: wp(2),
+    marginHorizontal: wp(1.5),
   },
   actionBtn: { 
-    paddingVertical: 6, 
-    paddingHorizontal: 10, 
-    borderRadius: 6 
+    paddingVertical: wp(1.5), 
+    paddingHorizontal: wp(2.5), 
+    borderRadius: wp(1.5) 
+  },
+  actionText: {
+    fontSize: wp(3.5),
   },
   secondary: { 
-    marginLeft: 12 
+    marginLeft: wp(3) 
+  },
+  voteCount: { 
+    marginLeft: wp(1), 
+    marginRight: wp(1), 
+    fontWeight: '600',
+    fontSize: wp(3.5),
+    minWidth: wp(3),
+    textAlign: 'center',
+  },
+  divider: {
+    width: 1,
+    height: wp(4),
+    backgroundColor: '#a2a2a2ff',
   },
   scoreText: { 
-    marginLeft: 8, 
-    marginRight: 8, 
-    fontWeight: '600' 
+    marginLeft: wp(2), 
+    marginRight: wp(2), 
+    fontWeight: '600',
+    fontSize: wp(3.5),
   },
-    emptyState: {
+  emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: wp(5),
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: wp(4.5),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: wp(2),
   },
   emptySubtext: {
-    fontSize: 14,
+    fontSize: wp(3.5),
     color: '#666',
     textAlign: 'center',
   },
 });
-
