@@ -233,9 +233,9 @@ export default function QuestionDetails() {
                     <ThemedText style={styles.voteCount}>{answer.upvotes || 0}</ThemedText>
                   </TouchableOpacity>
                   
-                  <ThemedView style={styles.scoreBox}>
+                  {/* <ThemedView style={styles.scoreBox}>
                     <ThemedText style={styles.scoreText}>{answer.score || 0}</ThemedText>
-                  </ThemedView>
+                  </ThemedView> */}
                   
                   <TouchableOpacity 
                     style={styles.voteButton}

@@ -6,6 +6,8 @@ import {
   StyleSheet,
   Alert,
   View,
+  TextInput,
+  Image,
 } from 'react-native';
 import {
   collection,
@@ -21,8 +23,11 @@ import {
   doc,
   Timestamp,
   onSnapshot,
+  addDoc,
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+//import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { app } from '@/firebase/FirebaseConfig';
 import { ThemedView } from '@/components/ThemedView';
@@ -30,9 +35,11 @@ import { ThemedText } from '@/components/ThemedText';
 import { wp, hp } from '@/constants/common';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Octicons from '@expo/vector-icons/Octicons';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 const db = getFirestore(app);
 const auth = getAuth(app);
+const storage = getStorage(app);
 
 type QuestionListItem = {
   id: string;
@@ -40,22 +47,28 @@ type QuestionListItem = {
   body: string;
   authorDisplayName?: string;
   createdAt?: Date | null;
-  score: number;
   upvotes: number;
   downvotes: number;
   userReaction?: 'upvote' | 'downvote' | null;
   answersCount: number;
+  attachments?: string[];
 };
 
 const PAGE_SIZE = 10;
 
-export default function CommunityQuestionList() {
+const CommunityQuestionList = () => {
   const [questions, setQuestions] = useState<QuestionListItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [showQuestionForm, setShowQuestionForm] = useState<boolean>(false);
+  const [newQuestionTitle, setNewQuestionTitle] = useState<string>('');
+  const [newQuestionBody, setNewQuestionBody] = useState<string>('');
+  const [uploading, setUploading] = useState<boolean>(false);
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [tempAttachments, setTempAttachments] = useState<string[]>([]);
 
   const currentUser = auth.currentUser;
   const userId = currentUser?.uid || null;
@@ -81,11 +94,11 @@ export default function CommunityQuestionList() {
       body: data.body ?? '',
       authorDisplayName: data.authorDisplayName ?? 'Anonymous',
       createdAt,
-      score: data.score || 0,
       upvotes: data.upvotes || 0,
       downvotes: data.downvotes || 0,
       userReaction: null,
       answersCount,
+      attachments: data.attachments || [],
     };
   };
 
@@ -267,7 +280,6 @@ export default function CommunityQuestionList() {
             transaction.update(questionRef, {
               upvotes: currentUpvotes - 1,
               downvotes: currentDownvotes + 1,
-              score: (currentUpvotes - 1) - (currentDownvotes + 1),
             });
           }
         } else {
@@ -312,6 +324,78 @@ export default function CommunityQuestionList() {
     });
   };
 
+  const handleCreateQuestion = async () => {
+    if (!currentUser) {
+      Alert.alert('Authentication Required', 'Please sign in to create a question');
+      return;
+    }
+
+    if (!newQuestionTitle.trim() || !newQuestionBody.trim()) {
+      Alert.alert('Validation Error', 'Please provide both title and body for your question');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      
+      // Upload attachments if any
+      const uploadedAttachments = [];
+      for (const uri of tempAttachments) {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const storageRef = ref(storage, `communityQuestions/${Date.now()}_${Math.random().toString(36).substring(2)}`);
+        const snapshot = await uploadBytes(storageRef, blob);
+        const downloadURL = await getDownloadURL(snapshot.ref);
+        uploadedAttachments.push(downloadURL);
+      }
+
+      await addDoc(collection(db, 'communityQuestions'), {
+        title: newQuestionTitle,
+        body: newQuestionBody,
+        authorId: currentUser.uid,
+        authorDisplayName: currentUser.displayName || 'Unknown User',
+        createdAt: Timestamp.now(),
+        upvotes: 0,
+        downvotes: 0,
+        //attachments: uploadedAttachments,
+      });
+
+      setNewQuestionTitle('');
+      setNewQuestionBody('');
+      setTempAttachments([]);
+      setShowQuestionForm(false);
+      loadInitialQuestions();
+    } catch (error) {
+      console.error('Error creating question:', error);
+      Alert.alert('Error', 'Failed to create question. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const pickImage = async () => {
+    if (!currentUser) {
+      Alert.alert('Authentication Required', 'Please sign in to upload images');
+      return;
+    }
+
+    // const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // if (!permissionResult.granted) {
+    //   Alert.alert('Permission Required', 'We need access to your photos to upload images');
+    //   return;
+    // }
+
+    // const result = await ImagePicker.launchImageLibraryAsync({
+    //   mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    //   allowsEditing: true,
+    //   quality: 0.7,
+    // });
+
+    // if (!result.canceled && result.assets) {
+    //   setTempAttachments([...tempAttachments, result.assets[0].uri]);
+    // }
+  };
+
   const renderQuestionItem = ({ item }: { item: QuestionListItem }) => (
     <ThemedView style={styles.questionCard}>
       <TouchableOpacity onPress={() => navigateToQuestionDetail(item.id)}>
@@ -319,6 +403,19 @@ export default function CommunityQuestionList() {
         <ThemedText style={styles.questionBody} numberOfLines={2}>
           {item.body}
         </ThemedText>
+        
+        {item.attachments && item.attachments.length > 0 && (
+          <View style={styles.attachmentsContainer}>
+            {item.attachments.map((uri, index) => (
+              <Image 
+                key={index} 
+                source={{ uri }} 
+                style={styles.attachmentImage} 
+                resizeMode="cover"
+              />
+            ))}
+          </View>
+        )}
       </TouchableOpacity>
 
       <View style={styles.questionFooter}>
@@ -369,7 +466,13 @@ export default function CommunityQuestionList() {
           </View>
 
           <TouchableOpacity
-            onPress={() => navigateToQuestionDetail(item.id)}
+            onPress={() => {
+              if (!currentUser) {
+                Alert.alert('Sign In Required', 'Please sign in to answer this question');
+                return;
+              }
+              navigateToQuestionDetail(item.id);
+            }}
             style={styles.commentButton}
           >
             <Octicons name="comment" size={wp(4.5)} color="#666" />
@@ -387,7 +490,77 @@ export default function CommunityQuestionList() {
       <View style={styles.header}>
         <Ionicons name="people" size={wp(6)} color="#333" />
         <ThemedText style={styles.headerTitle}>Community Questions</ThemedText>
+        
+        <TouchableOpacity 
+          style={styles.addButton}
+          onPress={() => {
+            if (!currentUser) {
+              Alert.alert('Sign In Required', 'Please sign in to create a question');
+              return;
+            }
+            setShowQuestionForm(!showQuestionForm);
+          }}
+        >
+          <MaterialIcons name={showQuestionForm ? 'close' : 'add'} size={wp(6)} color="#333" />
+        </TouchableOpacity>
       </View>
+
+      {showQuestionForm && (
+        <ThemedView style={styles.questionForm}>
+          <TextInput
+            style={styles.input}
+            placeholder="Question Title"
+            value={newQuestionTitle}
+            onChangeText={setNewQuestionTitle}
+            placeholderTextColor="#999"
+          />
+          <TextInput
+            style={[styles.input, styles.multilineInput]}
+            placeholder="Question Body"
+            value={newQuestionBody}
+            onChangeText={setNewQuestionBody}
+            multiline
+            numberOfLines={4}
+            placeholderTextColor="#999"
+          />
+          
+          {tempAttachments.length > 0 && (
+            <View style={styles.attachmentsPreview}>
+              {tempAttachments.map((uri, index) => (
+                <Image 
+                  key={index} 
+                  source={{ uri }} 
+                  style={styles.previewImage} 
+                  resizeMode="cover"
+                />
+              ))}
+            </View>
+          )}
+          
+          <View style={styles.formActions}>
+            <TouchableOpacity 
+              style={styles.uploadButton}
+              onPress={pickImage}
+              disabled={uploading}
+            >
+              <Ionicons name="image-outline" size={wp(5)} color="#333" />
+              <ThemedText style={styles.uploadText}>Add Image</ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.submitButton}
+              onPress={handleCreateQuestion}
+              disabled={uploading || !newQuestionTitle.trim() || !newQuestionBody.trim()}
+            >
+              {uploading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <ThemedText style={styles.submitText}>Post Question</ThemedText>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ThemedView>
+      )}
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -398,7 +571,7 @@ export default function CommunityQuestionList() {
           <Ionicons name="help-circle-outline" size={wp(12)} color="#999" />
           <ThemedText style={styles.emptyTitle}>No Questions Yet</ThemedText>
           <ThemedText style={styles.emptySubtitle}>
-            Be the first to ask a question!
+            {currentUser ? 'Be the first to ask a question!' : 'Sign in to ask a question'}
           </ThemedText>
         </View>
       ) : (
@@ -419,7 +592,9 @@ export default function CommunityQuestionList() {
       )}
     </ThemedView>
   );
-}
+};
+
+export default CommunityQuestionList;
 
 const styles = StyleSheet.create({
   container: {
@@ -437,6 +612,66 @@ const styles = StyleSheet.create({
     fontSize: wp(5),
     fontWeight: '600',
     marginLeft: wp(3),
+    flex: 1,
+  },
+  addButton: {
+    padding: wp(1),
+  },
+  questionForm: {
+    padding: wp(4),
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#ddd',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginBottom: wp(3),
+    fontSize: wp(4),
+  },
+  multilineInput: {
+    minHeight: hp(10),
+    textAlignVertical: 'top',
+  },
+  formActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: wp(2),
+    borderRadius: wp(2),
+    backgroundColor: '#f0f0f0',
+  },
+  uploadText: {
+    marginLeft: wp(2),
+    fontSize: wp(4),
+  },
+  submitButton: {
+    backgroundColor: '#4285F4',
+    paddingVertical: wp(3),
+    paddingHorizontal: wp(5),
+    borderRadius: wp(2),
+  },
+  submitText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: wp(4),
+  },
+  attachmentsPreview: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: wp(3),
+  },
+  previewImage: {
+    width: wp(20),
+    height: wp(20),
+    borderRadius: wp(2),
+    marginRight: wp(2),
+    marginBottom: wp(2),
   },
   questionCard: {
     backgroundColor: '#fff',
@@ -460,6 +695,18 @@ const styles = StyleSheet.create({
     color: '#444',
     marginBottom: wp(4),
     lineHeight: wp(5.5),
+  },
+  attachmentsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: wp(3),
+  },
+  attachmentImage: {
+    width: wp(25),
+    height: wp(25),
+    borderRadius: wp(2),
+    marginRight: wp(2),
+    marginBottom: wp(2),
   },
   questionFooter: {
     borderTopWidth: StyleSheet.hairlineWidth,
