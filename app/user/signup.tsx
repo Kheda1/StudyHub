@@ -17,6 +17,7 @@ import { router } from 'expo-router';
 import { academicLevels } from '@/constants/academicLevels';
 import { AcademicLevel } from '@/types/types';
 import { wp } from '@/constants/common';
+import { ThemedText } from '@/components/ThemedText';
 
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
@@ -65,10 +66,10 @@ export default function SignupScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
     >
       <ScrollView contentContainerStyle={[styles.container, { paddingBottom: wp(8) }]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
-        <Text style={styles.label}>Email</Text>
+        <ThemedText style={styles.label}>Email</ThemedText>
         <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Email" />
 
-        <Text style={styles.label}>Password</Text>
+        <ThemedText style={styles.label}>Password</ThemedText>
         <TextInput
           style={styles.input}
           value={password}
@@ -77,7 +78,7 @@ export default function SignupScreen() {
           secureTextEntry
         />
 
-        <Text style={styles.label}>Phone (optional)</Text>
+        <ThemedText style={styles.label}>Phone (optional)</ThemedText>
         <TextInput
           style={styles.input}
           value={phone}
@@ -86,7 +87,7 @@ export default function SignupScreen() {
           keyboardType="phone-pad"
         />
 
-        <Text style={styles.label}>Academic Level</Text>
+        <ThemedText style={styles.label}>Academic Level</ThemedText>
         <View style={{ zIndex: 1000, marginBottom: 20 }}>
           <DropDownPicker
             open={open}
@@ -103,7 +104,7 @@ export default function SignupScreen() {
           />
         </View>
 
-        <Text style={styles.label}>Academic Interests</Text>
+        <ThemedText style={styles.label}>Academic Interests</ThemedText>
         <TextInput
           style={styles.input}
           value={interests}
@@ -111,7 +112,7 @@ export default function SignupScreen() {
           placeholder="e.g. Sciences, Arts, Commercials, Tech..."
         />
 
-        <Text style={styles.label}>Subjects/Modules</Text>
+        <ThemedText style={styles.label}>Subjects/Modules</ThemedText>
         <TextInput
           style={styles.input}
           value={subjects}
@@ -119,7 +120,7 @@ export default function SignupScreen() {
           placeholder="e.g. Math, Biology, Comm Skills..."
         />
 
-        <Text style={styles.label}>Preferred Study Methods</Text>
+        <ThemedText style={styles.label}>Preferred Study Methods</ThemedText>
         <TextInput
           style={styles.input}
           value={methods}
@@ -127,7 +128,7 @@ export default function SignupScreen() {
           placeholder="e.g. Group study, Goal Setting, Study Buddy..."
         />
 
-        <Text style={styles.label}>Study Times</Text>
+        <ThemedText style={styles.label}>Study Times</ThemedText>
         <TextInput
           style={styles.input}
           value={times}
@@ -136,11 +137,11 @@ export default function SignupScreen() {
         />
 
         <TouchableOpacity style={styles.signupButton} onPress={handleSignUp}>
-          <Text style={styles.signupText}>Sign Up</Text>
+          <ThemedText style={styles.signupText}>Sign Up</ThemedText>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.push('/user/login')}>
-          <Text style={styles.loginLink}>Already have an account? Log in</Text>
+          <ThemedText style={styles.loginLink}>Already have an account? Log in</ThemedText>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
