@@ -53,6 +53,7 @@ export default function SignupScreen() {
       });
 
       alert('Signup successful!');
+      console.log("User signed In");
       router.replace('/(tabs)/Home');
     } catch (err: any) {
       alert('Signup failed: ' + err.message);
