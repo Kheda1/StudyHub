@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -6,96 +6,160 @@ import {
   FlatList, 
   TouchableOpacity,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Text,
+  ImageBackground,
+  SafeAreaView
 } from 'react-native';
-import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { wp, hp } from '@/constants/common';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { auth, db } from '@/firebase/FirebaseConfig';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, orderBy, updateDoc } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  addDoc, 
+  serverTimestamp, 
+  doc, 
+  orderBy, 
+  updateDoc,
+  getDocs
+} from 'firebase/firestore';
+
+// Custom colors
+const COLORS = {
+  primary: '#6C63FF',
+  secondary: '#FF6584',
+  background: '#F8F9FA',
+  text: '#2D3748',
+  lightText: '#718096',
+  white: '#FFFFFF',
+  bubbleLeft: '#EDF2F7',
+  bubbleRight: '#6C63FF',
+  inputBg: '#E2E8F0',
+};
 
 interface Message {
   id: string;
   text: string;
   senderId: string;
   createdAt: any;
-  isCurrentUser: boolean;
 }
 
 interface Chat {
   id: string;
   participantIds: string[];
-  lastMessage: string;
-  lastUpdated: any;
+  participantNames?: { [key: string]: string };
+  lastMessage?: string;
+  lastUpdated?: any;
+  createdAt?: any;
+  unreadCount?: number;
+}
+
+interface Match {
+  id: string;
+  userId: string;
+  userName: string;
 }
 
 const MessagesScreen = () => {
-  const [activeTab, setActiveTab] = useState<'chats' | 'requests'>('chats');
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [currentChat, setCurrentChat] = useState<Chat | null>(null);
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
 
-  // Fetch user's chats
+  // Fetch user's chats and matches
   useEffect(() => {
     if (!auth.currentUser?.uid) return;
 
-    const q = query(
+    // Fetch chats
+    const chatsQuery = query(
       collection(db, 'chats'),
       where('participantIds', 'array-contains', auth.currentUser.uid)
     );
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const unsubscribeChats = onSnapshot(chatsQuery, (querySnapshot) => {
       const chatsData: Chat[] = [];
-      querySnapshot.forEach((doc) => {
-        chatsData.push({ id: doc.id, ...doc.data() } as Chat);
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data) {
+          chatsData.push({ id: docSnap.id, ...(data as any) });
+        }
       });
       setChats(chatsData);
     });
 
-    return () => unsubscribe();
-  }, []);
-
-  // Fetch messages for current chat
-  useEffect(() => {
-    if (!currentChatId) return;
-
-    const q = query(
-      collection(db, 'chats', currentChatId, 'messages'),
-      orderBy('createdAt')
-    );
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const messagesData: Message[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        messagesData.push({
-          id: doc.id,
-          text: data.text,
-          senderId: data.senderId,
-          createdAt: data.createdAt,
-          isCurrentUser: data.senderId === auth.currentUser?.uid
+    // Fetch matches (users who liked each other)
+    const fetchMatches = async () => {
+      const matchesQuery = query(
+        collection(db, 'matches'),
+        where('usersMatched', 'array-contains', auth.currentUser?.uid)
+      );
+      const snapshot = await getDocs(matchesQuery);
+      const matchesData: Match[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        if (!data) return;
+        const otherUserId = data.usersMatched?.find((id: string) => id !== auth.currentUser?.uid);
+        if (!otherUserId) return;
+        matchesData.push({
+          id: docSnap.id,
+          userId: otherUserId,
+          userName: data.userNames?.[otherUserId] || 'Unknown User'
         });
       });
-      setMessages(messagesData);
+      setMatches(matchesData);
+    };
+
+    fetchMatches();
+
+    return () => unsubscribeChats();
+  }, []);
+
+  // Fetch messages when chat is selected
+  useEffect(() => {
+    if (!currentChat?.id) return;
+
+    const messagesQuery = query(
+      collection(db, 'chats', currentChat.id, 'messages'),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribeMessages = onSnapshot(messagesQuery, (querySnapshot) => {
+      const messagesData: Message[] = [];
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data) {
+          messagesData.push({
+            id: docSnap.id,
+            text: data.text,
+            senderId: data.senderId,
+            createdAt: data.createdAt
+          });
+        }
+      });
+      setMessages(messagesData.reverse());
     });
 
-    return () => unsubscribe();
-  }, [currentChatId]);
+    return () => unsubscribeMessages();
+  }, [currentChat]);
 
   const handleSendMessage = async () => {
-    if (!message.trim() || !currentChatId || !auth.currentUser) return;
+    if (!message.trim() || !currentChat?.id || !auth.currentUser) return;
 
     try {
-      await addDoc(collection(db, 'chats', currentChatId, 'messages'), {
+      await addDoc(collection(db, 'chats', currentChat.id, 'messages'), {
         text: message,
         senderId: auth.currentUser.uid,
         createdAt: serverTimestamp()
       });
 
-      // Update last message in chat
-      await updateDoc(doc(db, 'chats', currentChatId), {
+      await updateDoc(doc(db, 'chats', currentChat.id), {
         lastMessage: message,
         lastUpdated: serverTimestamp()
       });
@@ -106,235 +170,542 @@ const MessagesScreen = () => {
     }
   };
 
+  const startNewChat = async (match: Match) => {
+    try {
+      const existingChat = chats.find(chat => 
+        chat.participantIds?.includes(match.userId)
+      );
+
+      if (existingChat) {
+        setCurrentChat(existingChat);
+      } else {
+        const newChatRef = await addDoc(collection(db, 'chats'), {
+          participantIds: [auth.currentUser?.uid, match.userId],
+          participantNames: {
+            [auth.currentUser?.uid || '']: auth.currentUser?.displayName || 'You',
+            [match.userId]: match.userName
+          },
+          lastMessage: 'Chat started',
+          lastUpdated: serverTimestamp(),
+          createdAt: serverTimestamp()
+        });
+
+        const newChat: Chat = {
+          id: newChatRef.id,
+          participantIds: [auth.currentUser?.uid || '', match.userId],
+          participantNames: {
+            [auth.currentUser?.uid || '']: auth.currentUser?.displayName || 'You',
+            [match.userId]: match.userName
+          },
+          lastMessage: 'Chat started',
+          lastUpdated: new Date(),
+          createdAt: new Date()
+        };
+        
+        setCurrentChat(newChat);
+      }
+      setShowNewChatModal(false);
+    } catch (error) {
+      console.error('Error creating chat:', error);
+    }
+  };
+
   const renderMessageItem = ({ item }: { item: Message }) => (
     <View style={[
       styles.messageBubble,
-      item.isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble
+      item.senderId === auth.currentUser?.uid ? styles.currentUserBubble : styles.otherUserBubble
     ]}>
-      <ThemedText style={item.isCurrentUser ? styles.currentUserText : styles.otherUserText}>
+      <Text style={item.senderId === auth.currentUser?.uid ? styles.currentUserText : styles.otherUserText}>
         {item.text}
-      </ThemedText>
-      <ThemedText style={styles.messageTime}>
-        {item.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </ThemedText>
+      </Text>
+      <Text style={[
+        styles.messageTime,
+        item.senderId === auth.currentUser?.uid ? styles.currentUserTime : styles.otherUserTime
+      ]}>
+        {item.createdAt?.toDate 
+          ? item.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+          : ''}
+      </Text>
     </View>
   );
 
-  const renderChatItem = ({ item }: { item: Chat }) => (
-    <TouchableOpacity 
-      style={styles.chatItem}
-      onPress={() => setCurrentChatId(item.id)}
-    >
-      <View style={styles.avatarPlaceholder} />
-      <View style={styles.chatContent}>
-        <ThemedText style={styles.chatName}>
-          {item.participantIds.find(id => id !== auth.currentUser?.uid) || 'Chat'}
-        </ThemedText>
-        <ThemedText style={styles.lastMessage} numberOfLines={1}>
-          {item.lastMessage}
-        </ThemedText>
-      </View>
-      <ThemedText style={styles.chatTime}>
-        {item.lastUpdated?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-      </ThemedText>
-    </TouchableOpacity>
-  );
+  const renderChatItem = ({ item }: { item: Chat }) => {
+    const otherUserId = item.participantIds?.find(id => id !== auth.currentUser?.uid);
+    const otherUserName = item.participantNames?.[otherUserId || ''] || 'Unknown';
+
+    return (
+      <TouchableOpacity 
+        style={styles.chatItem}
+        onPress={() => setCurrentChat(item)}
+      >
+        <View style={styles.avatarPlaceholder}>
+          <Text style={styles.avatarText}>
+            {otherUserName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.chatContent}>
+          <Text style={styles.chatName}>{otherUserName}</Text>
+          <Text style={styles.lastMessage} numberOfLines={1}>
+            {item.lastMessage || ''}
+          </Text>
+        </View>
+        <View style={styles.timeBadge}>
+          <Text style={styles.chatTime}>
+            {item.lastUpdated?.toDate 
+              ? item.lastUpdated.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+              : ''}
+          </Text>
+          {(item.unreadCount ?? 0) > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadText}>{item.unreadCount}</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <ThemedView style={styles.container}>
-      {!currentChatId ? (
-        <>
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === 'chats' && styles.activeTab]}
-              onPress={() => setActiveTab('chats')}
-            >
-              <ThemedText style={styles.tabText}>Chats</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === 'requests' && styles.activeTab]}
-              onPress={() => setActiveTab('requests')}
-            >
-              <ThemedText style={styles.tabText}>Requests</ThemedText>
-            </TouchableOpacity>
-          </View>
+    <SafeAreaView style={styles.safeArea}>
+      <ImageBackground 
+        source={require('@/assets/images/default-profile.jpg')} 
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      >
+        <ThemedView style={styles.container}>
+          {!currentChat ? (
+            <>
+              <View style={styles.header}>
+                <Text style={styles.headerTitle}>Messages</Text>
+                <TouchableOpacity 
+                  style={styles.newChatButton}
+                  onPress={() => setShowNewChatModal(true)}
+                >
+                  <Ionicons name="add" size={24} color={COLORS.white} />
+                </TouchableOpacity>
+              </View>
 
-          <FlatList
-            data={chats}
-            renderItem={renderChatItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.chatList}
-          />
-        </>
-      ) : (
-        <>
-          <View style={styles.chatHeader}>
-            <TouchableOpacity onPress={() => setCurrentChatId(null)}>
-              <Ionicons name="arrow-back" size={24} color="#333" />
-            </TouchableOpacity>
-            <ThemedText style={styles.chatTitle}>Messages</ThemedText>
-            <View style={{ width: 24 }} />
-          </View>
-
-          <FlatList
-            data={messages}
-            renderItem={renderMessageItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messagesContainer}
-            inverted
-          />
-
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.inputContainer}
-          >
-            <TextInput
-              style={styles.input}
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Type a message..."
-              placeholderTextColor="#999"
-              multiline
-            />
-            <TouchableOpacity 
-              style={styles.sendButton}
-              onPress={handleSendMessage}
-              disabled={!message.trim()}
-            >
-              <Ionicons 
-                name="send" 
-                size={24} 
-                color={message.trim() ? '#1E88E5' : '#ccc'} 
+              <FlatList
+                data={chats}
+                renderItem={renderChatItem}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.chatList}
+                ListEmptyComponent={
+                  <View style={styles.emptyState}>
+                    <Ionicons name="chatbubbles" size={48} color={COLORS.lightText} />
+                    <Text style={styles.emptyText}>No messages yet</Text>
+                    <TouchableOpacity 
+                      style={styles.startChatButton}
+                      onPress={() => setShowNewChatModal(true)}
+                    >
+                      <Text style={styles.startChatText}>Start a new chat</Text>
+                    </TouchableOpacity>
+                  </View>
+                }
               />
-            </TouchableOpacity>
-          </KeyboardAvoidingView>
-        </>
-      )}
-    </ThemedView>
+            </>
+          ) : (
+            <>
+              <View style={styles.chatHeader}>
+                <TouchableOpacity 
+                  style={styles.backButton}
+                  onPress={() => setCurrentChat(null)}
+                >
+                  <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+                </TouchableOpacity>
+                <View style={styles.chatTitleContainer}>
+                  <Text style={styles.chatTitle} numberOfLines={1}>
+                    {currentChat.participantNames?.[
+                      currentChat.participantIds?.find(id => id !== auth.currentUser?.uid) || ''
+                    ] || 'Chat'}
+                  </Text>
+                </View>
+                <View style={styles.headerRightPlaceholder} />
+              </View>
+
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                renderItem={renderMessageItem}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.messagesContainer}
+                inverted={false}
+                onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                showsVerticalScrollIndicator={false}
+              />
+
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? hp(8) : 0}
+                style={styles.inputContainer}
+              >
+                <TextInput
+                  style={styles.input}
+                  value={message}
+                  onChangeText={setMessage}
+                  placeholder="Type a message..."
+                  placeholderTextColor={COLORS.lightText}
+                  multiline
+                />
+                <TouchableOpacity 
+                  style={[
+                    styles.sendButton,
+                    !message.trim() && styles.sendButtonDisabled
+                  ]}
+                  onPress={handleSendMessage}
+                  disabled={!message.trim()}
+                >
+                  <Ionicons 
+                    name="send" 
+                    size={24} 
+                    color={message.trim() ? COLORS.primary : COLORS.lightText} 
+                  />
+                </TouchableOpacity>
+              </KeyboardAvoidingView>
+            </>
+          )}
+
+          {/* New Chat Modal */}
+          {showNewChatModal && (
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>New Message</Text>
+                  <TouchableOpacity 
+                    style={styles.modalCloseButton}
+                    onPress={() => setShowNewChatModal(false)}
+                  >
+                    <Ionicons name="close" size={24} color={COLORS.text} />
+                  </TouchableOpacity>
+                </View>
+                
+                {matches.length > 0 ? (
+                  <FlatList
+                    data={matches}
+                    renderItem={({ item }: { item: Match }) => (
+                      <TouchableOpacity 
+                        style={styles.matchItem}
+                        onPress={() => startNewChat(item)}
+                      >
+                        <View style={styles.matchAvatar}>
+                          <Text style={styles.avatarText}>
+                            {item.userName.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <Text style={styles.matchName}>{item.userName}</Text>
+                      </TouchableOpacity>
+                    )}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.matchList}
+                    keyboardShouldPersistTaps="handled"
+                  />
+                ) : (
+                  <View style={styles.emptyMatches}>
+                    <Ionicons name="people" size={48} color={COLORS.lightText} />
+                    <Text style={styles.emptyMatchText}>No matches yet</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+        </ThemedView>
+      </ImageBackground>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
+    flex: 1,
     marginVertical: hp(2),
+    backgroundColor: COLORS.primary,
+  },
+  backgroundImage: {
     flex: 1,
   },
-  tabContainer: {
+  container: {
+    //marginVertical: hp(2),
+    flex: 1,
+    backgroundColor: 'rgba(248, 249, 250, 0.95)',
+  },
+  header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#EDF2F7',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 15,
+  headerTitle: {
+    fontSize: wp(5),
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  newChatButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#1E88E5',
-  },
-  tabText: {
-    fontSize: wp(4),
-    fontWeight: '600',
-  },
   chatList: {
-    paddingTop: 10,
+    flexGrow: 1,
+    paddingTop: 8,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    marginTop: 16,
+    color: COLORS.lightText,
+    fontSize: wp(4),
+  },
+  startChatButton: {
+    marginTop: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
+  },
+  startChatText: {
+    color: COLORS.white,
+    fontWeight: '600',
+    fontSize: wp(4),
   },
   chatItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f5f5f5',
+    padding: 15,
+    backgroundColor: COLORS.white,
+    marginHorizontal: 12,
+    marginVertical: 6,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   avatarPlaceholder: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#e0e0e0',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
     marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: {
+    color: COLORS.white,
+    fontSize: wp(5),
+    fontWeight: 'bold',
   },
   chatContent: {
     flex: 1,
   },
   chatName: {
     fontWeight: '600',
-    fontSize: wp(4),
+    fontSize: wp(4.2),
+    color: COLORS.text,
     marginBottom: 4,
   },
   lastMessage: {
-    color: '#666',
-    fontSize: wp(3.5),
+    color: COLORS.lightText,
+    fontSize: wp(3.8),
+  },
+  timeBadge: {
+    alignItems: 'flex-end',
   },
   chatTime: {
-    color: '#999',
+    color: COLORS.lightText,
     fontSize: wp(3),
+    marginBottom: 4,
+  },
+  unreadBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unreadText: {
+    color: COLORS.white,
+    fontSize: wp(2.8),
+    fontWeight: 'bold',
   },
   chatHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     padding: 15,
+    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#EDF2F7',
+  },
+  backButton: {
+    padding: 8,
+  },
+  chatTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
   },
   chatTitle: {
     fontWeight: '600',
     fontSize: wp(4.5),
+    color: COLORS.text,
+    marginHorizontal: 8,
+  },
+  headerRightPlaceholder: {
+    width: 40,
   },
   messagesContainer: {
     padding: 15,
+    paddingBottom: 80,
   },
   messageBubble: {
     maxWidth: '80%',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 8,
   },
   currentUserBubble: {
     alignSelf: 'flex-end',
-    backgroundColor: '#1E88E5',
-    borderBottomRightRadius: 2,
+    backgroundColor: COLORS.bubbleRight,
+    borderBottomRightRadius: 4,
   },
   otherUserBubble: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f0f0f0',
-    borderBottomLeftRadius: 2,
+    backgroundColor: COLORS.bubbleLeft,
+    borderBottomLeftRadius: 4,
   },
   currentUserText: {
-    color: 'white',
+    color: COLORS.white,
+    fontSize: wp(4),
   },
   otherUserText: {
-    color: '#333',
+    color: COLORS.text,
+    fontSize: wp(4),
+  },
+  currentUserTime: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  otherUserTime: {
+    color: 'rgba(45,55,72,0.6)',
   },
   messageTime: {
     fontSize: wp(2.8),
     marginTop: 4,
     textAlign: 'right',
-    color: 'rgba(255,255,255,0.7)',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    backgroundColor: COLORS.white,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: 'white',
+    borderTopColor: '#EDF2F7',
   },
   input: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 20,
+    minHeight: 48,
+    maxHeight: 120,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 24,
     marginRight: 10,
     fontSize: wp(4),
+    color: COLORS.text,
   },
   sendButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    maxHeight: '70%',
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF2F7',
+  },
+  modalTitle: {
+    fontSize: wp(4.5),
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  modalCloseButton: {
     padding: 8,
+  },
+  matchList: {
+    paddingTop: 8,
+  },
+  matchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF2F7',
+  },
+  matchAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
+    marginRight: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  matchName: {
+    fontSize: wp(4),
+    fontWeight: '500',
+    color: COLORS.text,
+  },
+  emptyMatches: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyMatchText: {
+    marginTop: 16,
+    color: COLORS.lightText,
+    fontSize: wp(4),
   },
 });
 
