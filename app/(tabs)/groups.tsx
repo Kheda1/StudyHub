@@ -1,3 +1,4 @@
+//import 'react-native-get-random-values';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, 
@@ -30,7 +31,6 @@ import {
   Timestamp,
   arrayUnion
 } from 'firebase/firestore';
-//import * as Clipboard from 'expo-clipboard';
 import * as Clipboard from 'expo-clipboard';
 import { v4 as uuidv4 } from 'uuid';
 import * as Sharing from 'expo-sharing';
@@ -178,42 +178,92 @@ const GroupsScreen = () => {
     }
   };
 
+  // const createNewGroup = async () => {
+  //   if (!newGroupName.trim() || !auth.currentUser?.uid) return;
+
+  //   try {
+  //     const inviteCode = uuidv4();
+      
+  //     const newGroupRef = await addDoc(collection(db, 'groups'), {
+  //       name: newGroupName,
+  //       createdBy: auth.currentUser.uid,
+  //       adminId: auth.currentUser.uid,
+  //       participantIds: [auth.currentUser.uid],
+  //       participantNames: {
+  //         [auth.currentUser.uid]: auth.currentUser.displayName || 'You'
+  //       },
+  //       lastMessage: 'Group created',
+  //       lastUpdated: serverTimestamp(),
+  //       createdAt: serverTimestamp(),
+  //       inviteCode
+  //     });
+
+  //     setNewGroupName('');
+  //     setShowNewGroupModal(false);
+  //     setCurrentGroup({
+  //       id: newGroupRef.id,
+  //       name: newGroupName,
+  //       adminId: auth.currentUser.uid,
+  //       participantIds: [auth.currentUser.uid],
+  //       participantNames: {
+  //         [auth.currentUser.uid]: auth.currentUser.displayName || 'You'
+  //       },
+  //       lastMessage: 'Group created',
+  //       lastUpdated: serverTimestamp() as Timestamp,
+  //       createdAt: serverTimestamp() as Timestamp,
+  //       inviteCode
+  //     });
+  //   } catch (error) {
+  //     console.error('Error creating group:', error);
+  //   }
+  // };
+
+  // helper to generate a short random code
+  function generateInviteCode(length = 6) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    return Array.from({ length }, () =>
+      chars.charAt(Math.floor(Math.random() * chars.length))
+    ).join("");
+  }
+
   const createNewGroup = async () => {
     if (!newGroupName.trim() || !auth.currentUser?.uid) return;
 
     try {
-      const inviteCode = uuidv4();
-      
-      const newGroupRef = await addDoc(collection(db, 'groups'), {
+      const inviteCode = generateInviteCode();
+
+      const newGroupRef = await addDoc(collection(db, "groups"), {
         name: newGroupName,
+        createdBy: auth.currentUser.uid,
         adminId: auth.currentUser.uid,
         participantIds: [auth.currentUser.uid],
         participantNames: {
-          [auth.currentUser.uid]: auth.currentUser.displayName || 'You'
+          [auth.currentUser.uid]: auth.currentUser.displayName || "You",
         },
-        lastMessage: 'Group created',
+        lastMessage: "Group created",
         lastUpdated: serverTimestamp(),
         createdAt: serverTimestamp(),
-        inviteCode
+        inviteCode,
       });
 
-      setNewGroupName('');
+      setNewGroupName("");
       setShowNewGroupModal(false);
+
       setCurrentGroup({
         id: newGroupRef.id,
         name: newGroupName,
         adminId: auth.currentUser.uid,
         participantIds: [auth.currentUser.uid],
         participantNames: {
-          [auth.currentUser.uid]: auth.currentUser.displayName || 'You'
+          [auth.currentUser.uid]: auth.currentUser.displayName || "You",
         },
-        lastMessage: 'Group created',
+        lastMessage: "Group created",
         lastUpdated: serverTimestamp() as Timestamp,
         createdAt: serverTimestamp() as Timestamp,
-        inviteCode
+        inviteCode,
       });
     } catch (error) {
-      console.error('Error creating group:', error);
+      console.error("Error creating group:", error);
     }
   };
 
