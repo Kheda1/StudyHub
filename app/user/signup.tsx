@@ -22,19 +22,14 @@ import { ThemedText } from '@/components/ThemedText';
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  //const [level, setLevel] = useState('ZJC');
+  const [level, setLevel] = useState<AcademicLevel | null>(null);
   const [interests, setInterests] = useState('');
   const [subjects, setSubjects] = useState('');
   const [methods, setMethods] = useState('');
   const [times, setTimes] = useState('');
-
-  const [level, setLevel] = useState<AcademicLevel | null>(null);
   const [open, setOpen] = useState(false);
-  // const [items, setItems] = useState([
-  //   { label: 'High School', value: 'highschool' },
-  //   { label: 'College', value: 'college' },
-  // ]);
 
   const handleSignUp = async () => {
     try {
@@ -44,6 +39,7 @@ export default function SignupScreen() {
       await setDoc(doc(db, 'users', uid), {
         uid,
         email,
+        fullName,
         phone,
         level,
         interests,
@@ -67,8 +63,25 @@ export default function SignupScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
     >
       <ScrollView contentContainerStyle={[styles.container, { paddingBottom: wp(8) }]} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets={true}>
+        
+        <ThemedText style={styles.label}>Full Name</ThemedText>
+        <TextInput 
+          style={styles.input} 
+          value={fullName} 
+          onChangeText={setFullName} 
+          placeholder="Enter your full name" 
+          autoCapitalize="words"
+        />
+
         <ThemedText style={styles.label}>Email</ThemedText>
-        <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Email" />
+        <TextInput 
+          style={styles.input} 
+          value={email} 
+          onChangeText={setEmail} 
+          placeholder="Email" 
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
 
         <ThemedText style={styles.label}>Password</ThemedText>
         <TextInput
