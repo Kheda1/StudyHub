@@ -107,12 +107,24 @@ export type ThemeMode = 'light' | 'dark';
 // -----------------------------
 // Collections structure (other existing)
 // -----------------------------
+// export interface User {
+//   fullName: string;
+//   firstName: string;
+//   currentStreak: number;
+//   weeklyGoalHours: number;
+//   weeklyGoalSessions: number;
+// }
+
 export interface User {
-  displayName: string;
-  firstName: string;
-  currentStreak: number;
-  weeklyGoalHours: number;
-  weeklyGoalSessions: number;
+  uid: string;
+  email: string;
+  fullName: string;
+  phone?: string;
+  level?: AcademicLevel;
+  interests?: string;
+  subjects?: string;
+  methods?: string;
+  times?: string;
 }
 
 export interface StudySession {

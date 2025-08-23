@@ -39,7 +39,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (user) {
-      setDisplayName(user.displayName || '');
+      setDisplayName(user.email || '');
       setAvatarUrl(user.photoURL || DEFAULT_PROFILE_IMAGE);
     }
   }, [user]);
