@@ -10,28 +10,33 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth, db } from '@/firebase/FirebaseConfig';
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { router } from 'expo-router';
 import { academicLevels } from '@/constants/academicLevels';
 import { AcademicLevel } from '@/types/types';
 import { wp } from '@/constants/common';
 import { ThemedText } from '@/components/ThemedText';
 
+
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
-  const [level, setLevel] = useState<AcademicLevel | null>(null);
-  const [interests, setInterests] = useState('');
+  const [academicLevel, setAcademicLevel] = useState<AcademicLevel | null>(null);
   const [subjects, setSubjects] = useState('');
   const [methods, setMethods] = useState('');
-  const [times, setTimes] = useState('');
+  const [preferences, setPreferences] = useState('');
   const [open, setOpen] = useState(false);
 
   const handleSignUp = async () => {
+
+    if (!displayName || !academicLevel) {
+      alert("Please fill all required fields");
+      return;
+    }
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
@@ -39,13 +44,18 @@ export default function SignupScreen() {
       await setDoc(doc(db, 'users', uid), {
         uid,
         email,
-        fullName,
+        displayName,
         phone,
-        level,
-        interests,
-        subjects,
-        methods,
-        times,
+        academicLevel: academicLevel,
+        subjects: subjects ? subjects.split(',').map(s => s.trim()).filter(Boolean) : [],
+        methods: methods ? methods.split(',').map(m => m.trim()).filter(Boolean) : [],
+        preferences: preferences ? preferences.split(',').map(p => p.trim()).filter(Boolean) : [],
+        joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      await updateProfile(userCredential.user, {
+        displayName,
       });
 
       alert('Signup successful!');
@@ -67,8 +77,8 @@ export default function SignupScreen() {
         <ThemedText style={styles.label}>Full Name</ThemedText>
         <TextInput 
           style={styles.input} 
-          value={fullName} 
-          onChangeText={setFullName} 
+          value={displayName} 
+          onChangeText={setDisplayName} 
           placeholder="Enter your full name" 
           autoCapitalize="words"
         />
@@ -105,10 +115,10 @@ export default function SignupScreen() {
         <View style={{ zIndex: 1000, marginBottom: 20 }}>
           <DropDownPicker
             open={open}
-            value={level}
+            value={academicLevel}
             items={academicLevels}
             setOpen={setOpen}
-            setValue={setLevel}
+            setValue={setAcademicLevel}
             setItems={() => {}} 
             placeholder="Select level"
             listMode="SCROLLVIEW"
@@ -117,14 +127,6 @@ export default function SignupScreen() {
             textStyle={{ fontSize: 14 }}
           />
         </View>
-
-        <ThemedText style={styles.label}>Academic Interests</ThemedText>
-        <TextInput
-          style={styles.input}
-          value={interests}
-          onChangeText={setInterests}
-          placeholder="e.g. Sciences, Arts, Commercials, Tech..."
-        />
 
         <ThemedText style={styles.label}>Subjects/Modules</ThemedText>
         <TextInput
@@ -145,8 +147,8 @@ export default function SignupScreen() {
         <ThemedText style={styles.label}>Study Times</ThemedText>
         <TextInput
           style={styles.input}
-          value={times}
-          onChangeText={setTimes}
+          value={preferences}
+          onChangeText={setPreferences}
           placeholder="e.g. Evenings, weekends..."
         />
 

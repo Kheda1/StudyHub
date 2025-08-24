@@ -1,12 +1,6 @@
-// types.ts
-// Combined application types for StudyHub, including Community/Q&A types.
-
-// -----------------------------
-// User / Profile Types
-// -----------------------------
 export interface UserProfile {
   uid: string;
-  fullName: string;
+  displayName: string;
   email: string;
   academicLevel: AcademicLevel;
   studyPreferences: StudyPreferences;
@@ -24,7 +18,6 @@ export type AcademicLevel =
   | 'Undergraduate'
   | 'Postgraduate';
 
-// Study Preferences
 export interface StudyPreferences {
   preferredSubjects: string[];
   preferredStudyTimes: StudyTime[];
@@ -32,21 +25,16 @@ export interface StudyPreferences {
   languagesSpoken?: string[];
 }
 
-// Time of Study Preference
 export type StudyTime = 'Morning' | 'Afternoon' | 'Evening' | 'Night';
 
-// Study Mode
 export type StudyMode = 'Buddy' | 'Group' | 'Both';
 
-// -----------------------------
-// Study Group Types
-// -----------------------------
 export interface StudyGroup {
   id: string;
   name: string;
   subject: string;
-  createdBy: string; // uid
-  members: string[]; // uids
+  createdBy: string; 
+  members: string[]; 
   description?: string;
   createdAt: Date;
   isPrivate: boolean;
@@ -54,16 +42,13 @@ export interface StudyGroup {
 }
 
 export interface GroupSchedule {
-  day: string; // e.g., 'Monday'
-  startTime: string; // e.g., '14:00'
-  endTime: string; // e.g., '16:00'
+  day: string; 
+  startTime: string;
+  endTime: string; 
   location?: string;
   onlineLink?: string;
 }
 
-// -----------------------------
-// Chat & Messaging Types
-// -----------------------------
 export interface Message {
   id: string;
   senderId: string;
@@ -74,9 +59,6 @@ export interface Message {
   attachmentUrl?: string;
 }
 
-// -----------------------------
-// Notifications & Resources
-// -----------------------------
 export interface Notification {
   id: string;
   recipientId: string;
@@ -104,9 +86,7 @@ export interface Subject {
 
 export type ThemeMode = 'light' | 'dark';
 
-// -----------------------------
-// Collections structure (other existing)
-// -----------------------------
+
 // export interface User {
 //   fullName: string;
 //   firstName: string;
@@ -118,7 +98,7 @@ export type ThemeMode = 'light' | 'dark';
 export interface User {
   uid: string;
   email: string;
-  fullName: string;
+  displayName: string;
   phone?: string;
   level?: AcademicLevel;
   interests?: string;
@@ -153,35 +133,29 @@ export interface StudyGroupLite {
   isActive: boolean;
 }
 
-// -----------------------------
-// Community / Q&A types
-// -----------------------------
-
-/** Top-level question in Community */
 export interface CommunityQuestion {
-  id: string;                     // document id
-  authorId: string;               // UserProfile.uid
-  authorDisplayName?: string;     // cached for fast UI
+  id: string;                     
+  authorId: string;               
+  authorDisplayName?: string;     
   authorAvatarUrl?: string;
   title: string;
-  body: string;                   // markdown or plain text
-  tags?: string[];                // e.g. ['mathematics','a-level']
-  topics?: string[];              // higher-level channels
+  body: string;                   
+  tags?: string[];                
+  topics?: string[];              
   createdAt: Date;
   updatedAt?: Date;
   isPinned?: boolean;
   isAnonymous?: boolean;
   isSolved?: boolean;
   acceptedAnswerId?: string | null;
-  answerCount?: number;           // denormalized
-  viewCount?: number;             // denormalized
-  score?: number;                 // upvotes - downvotes (denormalized)
+  answerCount?: number;
+  viewCount?: number;
+  score?: number;
   commentCount?: number;
   attachmentUrls?: string[];
   visibility?: 'public' | 'private' | 'school' | 'group';
 }
 
-/** An answer to a question */
 export interface CommunityAnswer {
   id: string;
   questionId: string;
@@ -198,26 +172,25 @@ export interface CommunityAnswer {
 }
 
 /** Comment on a question or an answer */
-export interface CommunityComment {
-  id: string;
-  parentId: string;               // questionId or answerId
-  parentType: 'question' | 'answer';
-  authorId: string;
-  authorDisplayName?: string;
-  authorAvatarUrl?: string;
-  body: string;
-  createdAt: Date;
-  updatedAt?: Date;
-  score?: number;
-}
+// export interface CommunityComment {
+//   id: string;
+//   parentId: string;              
+//   parentType: 'question' | 'answer';
+//   authorId: string;
+//   authorDisplayName?: string;
+//   authorAvatarUrl?: string;
+//   body: string;
+//   createdAt: Date;
+//   updatedAt?: Date;
+//   score?: number;
+// }
 
-/** Reaction (upvote, downvote, bookmark, etc.) */
 export interface CommunityReaction {
   id: string;                     // doc id or composite key
-  targetId: string;               // questionId / answerId / commentId
-  targetType: 'question' | 'answer' | 'comment';
+  targetId: string;               // questionId / answerId
+  targetType: 'question' | 'answer';
   userId: string;
-  type: 'upvote' | 'downvote' | 'helpful' | 'bookmark';
+  type: 'upvote' | 'downvote';
   createdAt: Date;
 }
 
