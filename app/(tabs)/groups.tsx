@@ -34,32 +34,12 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { v4 as uuidv4 } from 'uuid';
 import * as Sharing from 'expo-sharing';
+import { Group, GroupMessage, User } from '@/types/types';
 
-// Interfaces
-interface Group {
-  id: string;
-  name: string;
-  adminId: string;
-  participantIds: string[];
-  participantNames: { [key: string]: string };
-  lastMessage?: string;
-  lastUpdated?: Timestamp;
-  createdAt?: Timestamp;
-  inviteCode: string;
-}
-
-interface GroupMessage {
-  id: string;
-  text: string;
-  senderId: string;
-  senderName: string;
-  createdAt?: Timestamp;
-}
-
-interface User {
-  id: string;
-  name: string;
-}
+// interface User {
+//   id: string;
+//   name: string;
+// }
 
 const GroupsScreen = () => {
   const [message, setMessage] = useState('');
@@ -128,7 +108,10 @@ const GroupsScreen = () => {
           text: data.text || '',
           senderId: data.senderId || '',
           senderName: data.senderName || 'Unknown',
-          createdAt: data.createdAt
+          createdAt: data.createdAt,
+          timestamp: data.createdAt?.toDate?.() ?? new Date(),
+          type: data.type ?? "text",
+          attachmentUrl: data.attachmentUrl || '',
         });
       });
       setGroupMessages(messagesData.reverse());
@@ -146,8 +129,9 @@ const GroupsScreen = () => {
       const data = doc.data();
       if (doc.id !== auth.currentUser?.uid) {
         usersData.push({
-          id: doc.id,
-          name: data.displayName || 'User'
+          uid: doc.id,
+          displayName: data.displayName || 'User',
+          email: data.email || ''
         });
       }
     });
@@ -273,7 +257,7 @@ const GroupsScreen = () => {
     try {
       await updateDoc(doc(db, 'groups', currentGroup.id), {
         participantIds: arrayUnion(userId),
-        [`participantNames.${userId}`]: users.find(u => u.id === userId)?.name || 'User'
+        [`participantNames.${userId}`]: users.find(u => u.uid === userId)?.displayName || 'User'
       });
     } catch (error) {
       console.error('Error adding member:', error);
@@ -354,15 +338,15 @@ const GroupsScreen = () => {
   const renderUserItem = ({ item }: { item: User }) => (
     <TouchableOpacity 
       style={styles.userItem}
-      onPress={() => addMembersToGroup(item.id)}
+      onPress={() => addMembersToGroup(item.uid)}
     >
       <View style={styles.userAvatar}>
         <Text style={styles.avatarText}>
-          {item.name.charAt(0).toUpperCase()}
+          {item.displayName.charAt(0).toUpperCase()}
         </Text>
       </View>
-      <Text style={styles.userName}>{item.name}</Text>
-      {currentGroup?.participantIds.includes(item.id) ? (
+      <Text style={styles.userName}>{item.displayName}</Text>
+      {currentGroup?.participantIds.includes(item.uid) ? (
         <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
       ) : (
         <Ionicons name="add-circle" size={24} color="#1E88E5" />
@@ -541,7 +525,7 @@ const GroupsScreen = () => {
             <FlatList
               data={users}
               renderItem={renderUserItem}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => item.uid}
               contentContainerStyle={styles.userList}
             />
           </View>

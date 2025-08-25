@@ -10,6 +10,18 @@ const tintColorDark = '#fff';
 const accent = '#1E88E5';
 const accentlight = '#46cb8129';
 const coolGray = '#C4C4C4'
+
+export const COLORS = {
+  primary: '#6C63FF',
+  secondary: '#FF6584',
+  background: '#F8F9FA',
+  text: '#2D3748',
+  lightText: '#718096',
+  white: '#FFFFFF',
+  bubbleLeft: '#EDF2F7',
+  bubbleRight: '#6C63FF',
+  inputBg: '#E2E8F0',
+};
 //6D6D6D
 //C4C4C4
 export const Colors = {
@@ -40,4 +52,5 @@ export const Colors = {
     coolGray
   },
 };
+
 

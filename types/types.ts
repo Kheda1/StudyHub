@@ -1,3 +1,5 @@
+import { Timestamp } from "firebase/firestore";
+
 export interface UserProfile {
   uid: string;
   displayName: string;
@@ -41,6 +43,18 @@ export interface StudyGroup {
   schedule?: GroupSchedule;
 }
 
+export interface Group {
+  id: string;
+  name: string;
+  adminId: string;
+  participantIds: string[];
+  participantNames: { [key: string]: string };
+  lastMessage?: string;
+  lastUpdated?: Timestamp;
+  createdAt?: Timestamp;
+  inviteCode: string;
+}
+
 export interface GroupSchedule {
   day: string; 
   startTime: string;
@@ -49,14 +63,44 @@ export interface GroupSchedule {
   onlineLink?: string;
 }
 
-export interface Message {
+export interface GroupMessage {
   id: string;
+  text: string;
   senderId: string;
-  groupId: string;
-  content: string;
+  senderName: string;
+  createdAt?: Timestamp;
   timestamp: Date;
   type: 'text' | 'image' | 'file';
   attachmentUrl?: string;
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  text: string;
+  chatId?: string;
+  groupId?: string;
+  content?: string;
+  createdAt: Timestamp;
+  timestamp: Date;
+  type: 'text' | 'image' | 'file';
+  attachmentUrl?: string;
+}
+
+export interface Chat {
+  id: string;
+  participantIds: string[];
+  participantNames?: { [key: string]: string };
+  lastMessage?: string;
+  lastUpdated?: any;
+  createdAt?: any;
+  unreadCount?: number;
+}
+
+export interface Match {
+  id: string;
+  userId: string;
+  userName: string;
 }
 
 export interface Notification {

@@ -25,44 +25,11 @@ import {
   doc, 
   orderBy, 
   updateDoc,
-  getDocs
+  getDocs,
+  Timestamp
 } from 'firebase/firestore';
-
-// Custom colors
-const COLORS = {
-  primary: '#6C63FF',
-  secondary: '#FF6584',
-  background: '#F8F9FA',
-  text: '#2D3748',
-  lightText: '#718096',
-  white: '#FFFFFF',
-  bubbleLeft: '#EDF2F7',
-  bubbleRight: '#6C63FF',
-  inputBg: '#E2E8F0',
-};
-
-interface Message {
-  id: string;
-  text: string;
-  senderId: string;
-  createdAt: any;
-}
-
-interface Chat {
-  id: string;
-  participantIds: string[];
-  participantNames?: { [key: string]: string };
-  lastMessage?: string;
-  lastUpdated?: any;
-  createdAt?: any;
-  unreadCount?: number;
-}
-
-interface Match {
-  id: string;
-  userId: string;
-  userName: string;
-}
+import { COLORS } from '@/constants/Colors';
+import { Chat, Message, Match } from '@/types/types'
 
 const MessagesScreen = () => {
   const [message, setMessage] = useState('');
@@ -137,9 +104,13 @@ const MessagesScreen = () => {
         if (data) {
           messagesData.push({
             id: docSnap.id,
-            text: data.text,
-            senderId: data.senderId,
-            createdAt: data.createdAt
+            senderId: data.senderId ?? "",
+            text: data.text ?? "",
+            chatId: currentChat?.id ?? "", 
+            createdAt: data.createdAt ?? null,
+            timestamp: data.createdAt?.toDate?.() ?? new Date(),
+            type: data.type ?? "text",
+            attachmentUrl: data.attachmentUrl,
           });
         }
       });
