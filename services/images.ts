@@ -3,7 +3,7 @@ import { decode } from 'base64-arraybuffer';
 import { Image } from 'react-native';
 import { supabase, supabaseUrl } from './supabase';
 
-interface FileData {
+export interface FileData {
     uri: string;
     fileName?: string;
     type?: string;

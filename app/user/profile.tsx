@@ -1,24 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  TouchableOpacity, 
-  View, 
-  TextInput, 
-  ScrollView, 
-  Alert, 
-  ActivityIndicator 
-} from 'react-native';
-import { Image } from 'expo-image';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { wp, hp } from '@/constants/common';
-import { router } from 'expo-router';
+import { hp, wp } from '@/constants/common';
 import { auth } from '@/firebase/FirebaseConfig';
+import { FileData, uploadImageToSupabase } from '@/services/images';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
+import { router } from 'expo-router';
 import { updateProfile } from 'firebase/auth';
 import { doc, getFirestore, updateDoc } from 'firebase/firestore';
-import { supabase } from '@/services/supabase';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import * as ImagePicker from 'expo-image-picker';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View
+} from 'react-native';
 import 'react-native-url-polyfill/auto';
 
 const DEFAULT_PROFILE_IMAGE = 'https://www.gravatar.com/avatar/default?s=200&d=mp';
@@ -34,12 +34,13 @@ export default function ProfileScreen() {
   const [user, setUser] = useState(auth.currentUser);
   const [displayName, setDisplayName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState(DEFAULT_PROFILE_IMAGE);
+  const [avatar, setAvatar] = useState<FileData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
-      setDisplayName(user.email || '');
+      setDisplayName(user.displayName || '');
       setAvatarUrl(user.photoURL || DEFAULT_PROFILE_IMAGE);
     }
   }, [user]);
@@ -70,8 +71,13 @@ export default function ProfileScreen() {
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0].uri) {
-        setAvatarUrl(result.assets[0].uri);
+      if (!result.canceled && result.assets[0].fileName) {
+        const fileData: FileData = {
+          uri: result.assets[0].uri,
+          fileName: result.assets[0].fileName,
+          type: result.assets[0].type,
+        };
+        setAvatar(fileData);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to select image';
@@ -79,48 +85,46 @@ export default function ProfileScreen() {
     }
   };
 
-  const uploadImageToSupabase = async (uri: string): Promise<string> => {
-    if (!user) throw new Error('User not authenticated');
+  // const uploadImageToSupabase = async (uri: string): Promise<string> => {
+  //   if (!user) throw new Error('User not authenticated');
     
-    try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
+  //   try {
+  //     const response = await fetch(uri);
+  //     const blob = await response.blob();
       
-      const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${user.uid}-${Date.now()}.${fileExt}`;
-      const filePath = `public/${fileName}`;
+  //     const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
+  //     const fileName = `${user.uid}-${Date.now()}.${fileExt}`;
+  //     const filePath = `public/${fileName}`;
+  //     console.log(filePath,"<-- filePath for supabase upload");
 
-      const { error } = await supabase.storage
-        .from(AVATAR_BUCKET)
-        .upload(filePath, blob, {
-          contentType: blob.type,
-          upsert: true
-        });
+  //     const { error } = await supabase.storage
+  //       .from(AVATAR_BUCKET)
+  //       .upload(filePath, blob, {
+  //         contentType: blob.type,
+  //         upsert: true
+  //       });
 
-      if (error) throw error;
+  //     if (error) throw error;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from(AVATAR_BUCKET)
-        .getPublicUrl(filePath);
+  //     const { data: { publicUrl } } = supabase.storage
+  //       .from(AVATAR_BUCKET)
+  //       .getPublicUrl(filePath);
 
-      return publicUrl;
-    } catch (error) {
-      console.error('Upload error:', error);
-      const errorMessage = (error as SupabaseError).message || 'Failed to upload image';
-      throw new Error(errorMessage);
-    }
-  };
+  //     return publicUrl;
+  //   } catch (error) {
+  //     console.error('Upload error:', error);
+  //     const errorMessage = (error as SupabaseError).message || 'Failed to upload image';
+  //     throw new Error(errorMessage);
+  //   }
+  // };
 
   const handleSave = async () => {
     if (!user) return;
+    if (!avatar) return;
     
     setLoading(true);
     try {
-      let newAvatarUrl = avatarUrl;
-      
-      if (avatarUrl.startsWith('file://')) {
-        newAvatarUrl = await uploadImageToSupabase(avatarUrl);
-      }
+      let newAvatarUrl  = await uploadImageToSupabase("user-profiles", avatar, displayName || user.uid);
 
       await updateProfile(user, {
         displayName,

@@ -277,7 +277,7 @@ export default function HomeScreen() {
         {/* Enhanced Greeting */}
         <ThemedView style={styles.greetingContainer}>
           <ThemedText style={[styles.heading, { color: textColor }]}>
-            {getGreeting()}, {userData?.displayName || userData?.firstName || 'Student'}! 🌟
+            {getGreeting()}, {userData?.displayName || userData?.email || 'Student'}!
           </ThemedText>
           <ThemedText style={[styles.subheading, { color: textColor }]}>
             Ready to achieve your study goals today?
@@ -289,7 +289,7 @@ export default function HomeScreen() {
               <FontAwesome5 name="fire" size={wp(5)} color="#FF6B35" />
               <View style={styles.streakText}>
                 <Text style={styles.streakNumber}>{userData?.currentStreak || 0} Days</Text>
-                <Text style={styles.streakLabel}>Study Streak 🔥</Text>
+                <Text style={styles.streakLabel}>Study Streak <FontAwesome5 name="fire" size={wp(4)} color="#FF6B35" /></Text>
               </View>
             </View>
             <TouchableOpacity style={styles.streakButton}>
@@ -302,7 +302,7 @@ export default function HomeScreen() {
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <MaterialIcons name="today" size={wp(5)} color="#4CAF50" />
-            <Text style={styles.cardTitle}>Today's Schedule</Text>
+            <Text style={styles.cardTitle}>Today Schedule</Text>
             <Text style={styles.dateText}>
               {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
             </Text>
@@ -348,7 +348,7 @@ export default function HomeScreen() {
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <FontAwesome5 name="chart-line" size={wp(4.5)} color="#9C27B0" />
-              <Text style={styles.cardTitle}>This Week's Progress</Text>
+              <Text style={styles.cardTitle}>This Week Progress</Text>
             </View>
             <View style={styles.progressContainer}>
               <View style={styles.progressItem}>
@@ -398,7 +398,7 @@ export default function HomeScreen() {
           {activeGroups.length === 0 ? (
             <View style={styles.emptyState}>
               <FontAwesome5 name="users-slash" size={wp(6)} color="#BDBDBD" />
-              <Text style={styles.emptyText}>You haven't joined any study groups yet</Text>
+              <Text style={styles.emptyText}>You have not joined any study groups yet</Text>
               <TouchableOpacity style={styles.emptyButton} onPress={() => router.push('/groups')}>
                 <Text style={styles.emptyButtonText}>Explore Groups</Text>
               </TouchableOpacity>
