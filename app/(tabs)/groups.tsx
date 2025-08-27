@@ -12,7 +12,10 @@ import {
   ScrollView,
   Linking,
   Keyboard,
-  TouchableWithoutFeedback
+  TouchableWithoutFeedback,
+  Image,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -36,7 +39,9 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { v4 as uuidv4 } from 'uuid';
 import * as Sharing from 'expo-sharing';
+import * as ImagePicker from 'expo-image-picker';
 import { Group, GroupMessage, User } from '@/types/types';
+import { FileData, uploadImageToSupabase } from '@/services/images';
 
 const GroupsScreen = () => {
   const [message, setMessage] = useState('');
@@ -49,6 +54,9 @@ const GroupsScreen = () => {
   const [showAddMembersModal, setShowAddMembersModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [attachments, setAttachments] = useState<FileData[]>([]);
+  const [tempAttachments, setTempAttachments] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
 
   // Helper function for timestamps
@@ -129,7 +137,7 @@ const GroupsScreen = () => {
           senderName: data.senderName || 'Unknown',
           createdAt: data.createdAt,
           timestamp: data.createdAt?.toDate?.() ?? new Date(),
-          type: data.type ?? "text",
+          type: data.type || 'text',
           attachmentUrl: data.attachmentUrl || '',
         });
       });
@@ -157,27 +165,108 @@ const GroupsScreen = () => {
     setUsers(usersData);
   };
 
-  const handleSendMessage = async () => {
-    if (!message.trim() || !currentGroup?.id || !auth.currentUser?.uid) return;
+  const pickImage = async () => {
+    if (!currentGroup?.id || !auth.currentUser?.uid) {
+      Alert.alert('Error', 'Please select a group first');
+      return;
+    }
 
     try {
-      // Add new message
-      await addDoc(collection(db, 'groups', currentGroup.id, 'messages'), {
-        text: message,
-        senderId: auth.currentUser.uid,
-        senderName: auth.currentUser.displayName || 'You',
-        createdAt: serverTimestamp()
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Please allow photo access');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
       });
 
+      if (!result.canceled && result.assets[0].uri) {
+        const fileData: FileData = {
+          uri: result.assets[0].uri,
+          fileName: result.assets[0].fileName || `image-${Date.now()}.jpg`,
+          type: result.assets[0].type || 'image',
+        };
+        setAttachments([...attachments, fileData]);
+        setTempAttachments([...tempAttachments, result.assets[0].uri]);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to select image';
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    const newAttachments = [...attachments];
+    const newTempAttachments = [...tempAttachments];
+    newAttachments.splice(index, 1);
+    newTempAttachments.splice(index, 1);
+    setAttachments(newAttachments);
+    setTempAttachments(newTempAttachments);
+  };
+
+  const handleSendMessage = async () => {
+    if ((!message.trim() && attachments.length === 0) || !currentGroup?.id || !auth.currentUser?.uid) return;
+
+    setUploading(true);
+    try {
+      let attachmentUrl = '';
+
+      // Upload image to Supabase if attached
+      if (attachments.length > 0) {
+        try {
+          const result = await uploadImageToSupabase(
+            "group-messages", 
+            attachments[0], 
+            `${currentGroup.id}-${Date.now()}`
+          );
+          if (result === null) {
+            throw new Error('Failed to upload image');
+          }
+          attachmentUrl = result;
+        } catch (error) {
+          Alert.alert('Error', 'Failed to upload image. Please try again.');
+          setUploading(false);
+          return;
+        }
+      }
+
+      // Add new message
+      const messageData: any = {
+        senderId: auth.currentUser.uid,
+        senderName: auth.currentUser.displayName || 'You',
+        createdAt: serverTimestamp(),
+        type: attachmentUrl ? 'image' : 'text',
+      };
+
+      if (attachmentUrl) {
+        messageData.attachmentUrl = attachmentUrl;
+        messageData.text = message.trim() || 'Sent an image';
+      } else {
+        messageData.text = message;
+      }
+
+      await addDoc(collection(db, 'groups', currentGroup.id, 'messages'), messageData);
+
       // Update group last message
+      const lastMessageText = attachmentUrl ? '📷 Image' : message;
       await updateDoc(doc(db, 'groups', currentGroup.id), {
-        lastMessage: message,
+        lastMessage: lastMessageText,
         lastUpdated: serverTimestamp()
       });
 
       setMessage('');
+      setAttachments([]);
+      setTempAttachments([]);
     } catch (error) {
       console.error('Error sending message:', error);
+      Alert.alert('Error', 'Failed to send message');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -262,15 +351,15 @@ const GroupsScreen = () => {
   };
 
   const shareInviteLink = async () => {
-  if (!currentGroup?.inviteCode) return;
+    if (!currentGroup?.inviteCode) return;
 
-  const inviteLink = `studyhub://groups/join?code=${currentGroup.inviteCode}`;
-  try {
-    await Sharing.shareAsync(inviteLink);
-  } catch (error) {
-    console.error('Failed to share link:', error);
-  }
-};
+    const inviteLink = `studyhub://groups/join?code=${currentGroup.inviteCode}`;
+    try {
+      await Sharing.shareAsync(inviteLink);
+    } catch (error) {
+      console.error('Failed to share link:', error);
+    }
+  };
 
   const renderGroupItem = ({ item }: { item: Group }) => (
     <TouchableOpacity 
@@ -305,9 +394,29 @@ const GroupsScreen = () => {
       <Text style={styles.senderName}>
         {item.senderId === auth.currentUser?.uid ? 'You' : item.senderName}
       </Text>
-      <Text style={item.senderId === auth.currentUser?.uid ? styles.currentUserText : styles.otherUserText}>
-        {item.text}
-      </Text>
+      
+      {item.type === 'image' && item.attachmentUrl ? (
+        <View>
+          <Image 
+            source={{ uri: item.attachmentUrl }} 
+            style={styles.messageImage}
+            resizeMode="cover"
+          />
+          {item.text && item.text !== 'Sent an image' && (
+            <Text style={[
+              styles.messageCaption,
+              item.senderId === auth.currentUser?.uid ? styles.currentUserCaption : styles.otherUserCaption
+            ]}>
+              {item.text}
+            </Text>
+          )}
+        </View>
+      ) : (
+        <Text style={item.senderId === auth.currentUser?.uid ? styles.currentUserText : styles.otherUserText}>
+          {item.text}
+        </Text>
+      )}
+      
       <Text style={styles.messageTime}>
         {getTimeString(item.createdAt)}
       </Text>
@@ -326,9 +435,9 @@ const GroupsScreen = () => {
       </View>
       <Text style={styles.userName}>{item.displayName}</Text>
       {currentGroup?.participantIds.includes(item.uid) ? (
-        <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+        <Ionicons name="checkmark-circle" size={wp(6)} color="#4CAF50" />
       ) : (
-        <Ionicons name="add-circle" size={24} color="#1E88E5" />
+        <Ionicons name="add-circle" size={wp(6)} color="#1E88E5" />
       )}
     </TouchableOpacity>
   );
@@ -340,7 +449,7 @@ const GroupsScreen = () => {
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Groups</Text>
             <TouchableOpacity onPress={() => setShowNewGroupModal(true)}>
-              <Ionicons name="add" size={24} color="#1E88E5" />
+              <Ionicons name="add" size={wp(6)} color="#1E88E5" />
             </TouchableOpacity>
           </View>
 
@@ -351,7 +460,7 @@ const GroupsScreen = () => {
             contentContainerStyle={styles.groupList}
             ListEmptyComponent={
               <View style={styles.emptyState}>
-                <Ionicons name="people" size={48} color="#ccc" />
+                <Ionicons name="people" size={wp(12)} color="#ccc" />
                 <Text style={styles.emptyText}>No groups yet</Text>
                 <TouchableOpacity 
                   style={styles.createGroupButton}
@@ -367,13 +476,13 @@ const GroupsScreen = () => {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardAvoidingView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? wp(22) : wp(2)}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={{ flex: 1 }}>
               <View style={styles.groupHeader}>
                 <TouchableOpacity onPress={() => setCurrentGroup(null)}>
-                  <Ionicons name="arrow-back" size={24} color="#333" />
+                  <Ionicons name="arrow-back" size={wp(6)} color="#333" />
                 </TouchableOpacity>
                 <View style={styles.groupHeaderContent}>
                   <Text style={styles.groupTitle}>{currentGroup.name}</Text>
@@ -382,7 +491,7 @@ const GroupsScreen = () => {
                   </Text>
                 </View>
                 <TouchableOpacity onPress={() => setShowInviteModal(true)}>
-                  <Ionicons name="person-add" size={24} color="#1E88E5" />
+                  <Ionicons name="person-add" size={wp(6)} color="#1E88E5" />
                 </TouchableOpacity>
               </View>
 
@@ -401,12 +510,41 @@ const GroupsScreen = () => {
                 }
               />
 
+              {/* Image preview */}
+              {tempAttachments.length > 0 && (
+                <View style={styles.imagePreviewContainer}>
+                  {tempAttachments.map((uri, index) => (
+                    <View key={index} style={styles.previewImageWrapper}>
+                      <Image 
+                        source={{ uri }} 
+                        style={styles.previewImage}
+                        resizeMode="cover"
+                      />
+                      <TouchableOpacity 
+                        style={styles.removePreviewButton}
+                        onPress={() => removeImage(index)}
+                      >
+                        <Ionicons name="close-circle" size={wp(5)} color="#F44336" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+
               <View
                 style={[
                   styles.inputContainer,
                   keyboardVisible && styles.inputContainerKeyboardActive,
                 ]}
               >
+                <TouchableOpacity 
+                  style={styles.attachButton}
+                  onPress={pickImage}
+                  disabled={uploading}
+                >
+                  <Ionicons name="image" size={wp(8)} color="#1E88E5" />
+                </TouchableOpacity>
+                
                 <TextInput
                   style={styles.input}
                   value={message}
@@ -414,17 +552,23 @@ const GroupsScreen = () => {
                   placeholder="Type a message..."
                   placeholderTextColor="#999"
                   multiline
+                  editable={!uploading}
                 />
+                
                 <TouchableOpacity
-                  style={styles.sendButton}
+                  style={[styles.sendButton, uploading && styles.sendButtonDisabled]}
                   onPress={handleSendMessage}
-                  disabled={!message.trim()}
+                  disabled={(!message.trim() && attachments.length === 0) || uploading}
                 >
-                  <Ionicons
-                    name="send"
-                    size={24}
-                    color={message.trim() ? "#1E88E5" : "#ccc"}
-                  />
+                  {uploading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons
+                      name="send"
+                      size={wp(5)}
+                      color="#fff"
+                    />
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
@@ -432,14 +576,14 @@ const GroupsScreen = () => {
         </KeyboardAvoidingView>
       )}
 
-      {/* New Group Modal */}
+      {/* Modals remain the same */}
       {showNewGroupModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create New Group</Text>
               <TouchableOpacity onPress={() => setShowNewGroupModal(false)}>
-                <Ionicons name="close" size={24} color="#333" />
+                <Ionicons name="close" size={wp(6)} color="#333" />
               </TouchableOpacity>
             </View>
             
@@ -462,14 +606,13 @@ const GroupsScreen = () => {
         </View>
       )}
 
-      {/* Invite Modal */}
       {showInviteModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Invite to Group</Text>
               <TouchableOpacity onPress={() => setShowInviteModal(false)}>
-                <Ionicons name="close" size={24} color="#333" />
+                <Ionicons name="close" size={wp(6)} color="#333" />
               </TouchableOpacity>
             </View>
             
@@ -477,7 +620,7 @@ const GroupsScreen = () => {
               style={styles.inviteButton}
               onPress={copyInviteLink}
             >
-              <Ionicons name="copy" size={20} color="#1E88E5" />
+              <Ionicons name="copy" size={wp(5)} color="#1E88E5" />
               <Text style={styles.inviteButtonText}>Copy Invite Link</Text>
             </TouchableOpacity>
             
@@ -485,33 +628,32 @@ const GroupsScreen = () => {
               style={styles.inviteButton}
               onPress={shareInviteLink}
             >
-              <Ionicons name="share-social" size={20} color="#1E88E5" />
+              <Ionicons name="share-social" size={wp(5)} color="#1E88E5" />
               <Text style={styles.inviteButtonText}>Share Invite</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
-              style={[styles.inviteButton, { marginTop: 20 }]}
+              style={[styles.inviteButton, { marginTop: hp(2.5) }]}
               onPress={() => {
                 setShowInviteModal(false);
                 fetchUsers();
                 setShowAddMembersModal(true);
               }}
             >
-              <Ionicons name="person-add" size={20} color="#1E88E5" />
+              <Ionicons name="person-add" size={wp(5)} color="#1E88E5" />
               <Text style={styles.inviteButtonText}>Add Members Directly</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
 
-      {/* Add Members Modal */}
       {showAddMembersModal && (
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '80%' }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Members</Text>
               <TouchableOpacity onPress={() => setShowAddMembersModal(false)}>
-                <Ionicons name="close" size={24} color="#333" />
+                <Ionicons name="close" size={wp(6)} color="#333" />
               </TouchableOpacity>
             </View>
             
@@ -640,7 +782,7 @@ const styles = StyleSheet.create({
     paddingBottom: hp(10),
   },
   messagesContainerKeyboardActive: {
-    paddingBottom: hp(20), // Extra padding when keyboard is active
+    paddingBottom: hp(25),
   },
   messageBubble: {
     maxWidth: '80%',
@@ -672,23 +814,66 @@ const styles = StyleSheet.create({
     color: '#333',
     fontSize: wp(4),
   },
+  messageImage: {
+    width: wp(60),
+    height: wp(60),
+    borderRadius: wp(2),
+    marginVertical: hp(0.5),
+  },
+  messageCaption: {
+    fontSize: wp(4),
+    marginTop: hp(0.5),
+    paddingHorizontal: wp(1),
+  },
+  currentUserCaption: {
+    color: 'white',
+  },
+  otherUserCaption: {
+    color: '#333',
+  },
   messageTime: {
     fontSize: wp(2.8),
     marginTop: hp(0.5),
     textAlign: 'right',
     color: 'rgba(255,255,255,0.7)',
   },
+  imagePreviewContainer: {
+    flexDirection: 'row',
+    padding: wp(2),
+    backgroundColor: '#f9f9f9',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  previewImageWrapper: {
+    position: 'relative',
+    marginRight: wp(2),
+  },
+  previewImage: {
+    width: wp(20),
+    height: wp(20),
+    borderRadius: wp(2),
+  },
+  removePreviewButton: {
+    position: 'absolute',
+    top: -wp(1),
+    right: -wp(1),
+    backgroundColor: 'white',
+    borderRadius: wp(3),
+  },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: wp(2.5),
-    marginVertical: hp(1),
+    backgroundColor: 'white',
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    backgroundColor: 'white',
   },
   inputContainerKeyboardActive: {
-    paddingBottom: Platform.OS === 'ios' ? hp(4) : hp(1.5), 
+    paddingBottom: Platform.OS === 'ios' ? hp(4) : hp(1.5),
+  },
+  attachButton: {
+    padding: wp(2),
+    marginRight: wp(1),
   },
   input: {
     flex: 1,
@@ -698,11 +883,20 @@ const styles = StyleSheet.create({
     paddingVertical: hp(1),
     backgroundColor: '#f5f5f5',
     borderRadius: wp(5),
-    marginRight: wp(2.5),
+    marginRight: wp(2),
     fontSize: wp(4),
   },
   sendButton: {
+    backgroundColor: '#1E88E5',
     padding: wp(2),
+    borderRadius: wp(3),
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: wp(10),
+    minHeight: wp(10),
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#90CAF9',
   },
   modalOverlay: {
     position: 'absolute',
@@ -792,6 +986,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
-
 
 export default GroupsScreen;
