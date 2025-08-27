@@ -10,7 +10,9 @@ import {
   Platform,
   Text,
   ScrollView,
-  Linking
+  Linking,
+  Keyboard,
+  TouchableWithoutFeedback
 } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -36,11 +38,6 @@ import { v4 as uuidv4 } from 'uuid';
 import * as Sharing from 'expo-sharing';
 import { Group, GroupMessage, User } from '@/types/types';
 
-// interface User {
-//   id: string;
-//   name: string;
-// }
-
 const GroupsScreen = () => {
   const [message, setMessage] = useState('');
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
@@ -51,6 +48,7 @@ const GroupsScreen = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAddMembersModal, setShowAddMembersModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   // Helper function for timestamps
@@ -58,6 +56,27 @@ const GroupsScreen = () => {
     if (!timestamp?.toDate) return '';
     return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  // Keyboard visibility detection
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   // Fetch user's groups
   useEffect(() => {
@@ -161,46 +180,6 @@ const GroupsScreen = () => {
       console.error('Error sending message:', error);
     }
   };
-
-  // const createNewGroup = async () => {
-  //   if (!newGroupName.trim() || !auth.currentUser?.uid) return;
-
-  //   try {
-  //     const inviteCode = uuidv4();
-      
-  //     const newGroupRef = await addDoc(collection(db, 'groups'), {
-  //       name: newGroupName,
-  //       createdBy: auth.currentUser.uid,
-  //       adminId: auth.currentUser.uid,
-  //       participantIds: [auth.currentUser.uid],
-  //       participantNames: {
-  //         [auth.currentUser.uid]: auth.currentUser.displayName || 'You'
-  //       },
-  //       lastMessage: 'Group created',
-  //       lastUpdated: serverTimestamp(),
-  //       createdAt: serverTimestamp(),
-  //       inviteCode
-  //     });
-
-  //     setNewGroupName('');
-  //     setShowNewGroupModal(false);
-  //     setCurrentGroup({
-  //       id: newGroupRef.id,
-  //       name: newGroupName,
-  //       adminId: auth.currentUser.uid,
-  //       participantIds: [auth.currentUser.uid],
-  //       participantNames: {
-  //         [auth.currentUser.uid]: auth.currentUser.displayName || 'You'
-  //       },
-  //       lastMessage: 'Group created',
-  //       lastUpdated: serverTimestamp() as Timestamp,
-  //       createdAt: serverTimestamp() as Timestamp,
-  //       inviteCode
-  //     });
-  //   } catch (error) {
-  //     console.error('Error creating group:', error);
-  //   }
-  // };
 
   // helper to generate a short random code
   function generateInviteCode(length = 6) {
@@ -385,58 +364,72 @@ const GroupsScreen = () => {
           />
         </>
       ) : (
-        <>
-          <View style={styles.groupHeader}>
-            <TouchableOpacity onPress={() => setCurrentGroup(null)}>
-              <Ionicons name="arrow-back" size={24} color="#333" />
-            </TouchableOpacity>
-            <View style={styles.groupHeaderContent}>
-              <Text style={styles.groupTitle}>{currentGroup.name}</Text>
-              <Text style={styles.groupSubtitle}>
-                {currentGroup.participantIds?.length || 0} members
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => setShowInviteModal(true)}>
-              <Ionicons name="person-add" size={24} color="#1E88E5" />
-            </TouchableOpacity>
-          </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardAvoidingView}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.groupHeader}>
+                <TouchableOpacity onPress={() => setCurrentGroup(null)}>
+                  <Ionicons name="arrow-back" size={24} color="#333" />
+                </TouchableOpacity>
+                <View style={styles.groupHeaderContent}>
+                  <Text style={styles.groupTitle}>{currentGroup.name}</Text>
+                  <Text style={styles.groupSubtitle}>
+                    {currentGroup.participantIds?.length || 0} members
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowInviteModal(true)}>
+                  <Ionicons name="person-add" size={24} color="#1E88E5" />
+                </TouchableOpacity>
+              </View>
 
-          <FlatList
-            ref={flatListRef}
-            data={groupMessages}
-            renderItem={renderMessageItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messagesContainer}
-            inverted={false}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          />
-
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
-            style={styles.inputContainer}
-          >
-            <TextInput
-              style={styles.input}
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Type a message..."
-              placeholderTextColor="#999"
-              multiline
-            />
-            <TouchableOpacity 
-              style={styles.sendButton}
-              onPress={handleSendMessage}
-              disabled={!message.trim()}
-            >
-              <Ionicons 
-                name="send" 
-                size={24} 
-                color={message.trim() ? '#1E88E5' : '#ccc'} 
+              <FlatList
+                ref={flatListRef}
+                data={groupMessages}
+                renderItem={renderMessageItem}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={[
+                  styles.messagesContainer,
+                  keyboardVisible && styles.messagesContainerKeyboardActive,
+                ]}
+                inverted={false}
+                onContentSizeChange={() =>
+                  flatListRef.current?.scrollToEnd({ animated: true })
+                }
               />
-            </TouchableOpacity>
-          </KeyboardAvoidingView>
-        </>
+
+              <View
+                style={[
+                  styles.inputContainer,
+                  keyboardVisible && styles.inputContainerKeyboardActive,
+                ]}
+              >
+                <TextInput
+                  style={styles.input}
+                  value={message}
+                  onChangeText={setMessage}
+                  placeholder="Type a message..."
+                  placeholderTextColor="#999"
+                  multiline
+                />
+                <TouchableOpacity
+                  style={styles.sendButton}
+                  onPress={handleSendMessage}
+                  disabled={!message.trim()}
+                >
+                  <Ionicons
+                    name="send"
+                    size={24}
+                    color={message.trim() ? "#1E88E5" : "#ccc"}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       )}
 
       {/* New Group Modal */}
@@ -540,11 +533,14 @@ const styles = StyleSheet.create({
     flex: 1,
     marginVertical: hp(2),
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
+    padding: wp(4),
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
@@ -559,37 +555,38 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
+    padding: wp(10),
   },
   emptyText: {
-    marginTop: 16,
+    marginTop: hp(2),
     color: '#666',
     fontSize: wp(4),
   },
   createGroupButton: {
-    marginTop: 20,
+    marginTop: hp(3),
     backgroundColor: '#1E88E5',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 24,
+    paddingVertical: hp(1.5),
+    paddingHorizontal: wp(6),
+    borderRadius: wp(6),
   },
   createGroupButtonText: {
     color: 'white',
     fontWeight: '600',
+    fontSize: wp(4),
   },
   groupItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
+    padding: wp(4),
     borderBottomWidth: 1,
     borderBottomColor: '#f5f5f5',
   },
   groupAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: wp(12),
+    height: wp(12),
+    borderRadius: wp(6),
     backgroundColor: '#4CAF50',
-    marginRight: 12,
+    marginRight: wp(3),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -604,7 +601,7 @@ const styles = StyleSheet.create({
   groupName: {
     fontWeight: '600',
     fontSize: wp(4),
-    marginBottom: 4,
+    marginBottom: hp(0.5),
   },
   lastMessage: {
     color: '#666',
@@ -613,7 +610,7 @@ const styles = StyleSheet.create({
   memberCount: {
     color: '#999',
     fontSize: wp(3),
-    marginTop: 4,
+    marginTop: hp(0.5),
   },
   groupTime: {
     color: '#999',
@@ -622,13 +619,13 @@ const styles = StyleSheet.create({
   groupHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
+    padding: wp(4),
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
   },
   groupHeaderContent: {
     flex: 1,
-    marginHorizontal: 12,
+    marginHorizontal: wp(3),
   },
   groupTitle: {
     fontWeight: '600',
@@ -639,64 +636,73 @@ const styles = StyleSheet.create({
     fontSize: wp(3.5),
   },
   messagesContainer: {
-    padding: 15,
-    paddingBottom: 80,
+    padding: wp(4),
+    paddingBottom: hp(10),
+  },
+  messagesContainerKeyboardActive: {
+    paddingBottom: hp(20), // Extra padding when keyboard is active
   },
   messageBubble: {
     maxWidth: '80%',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
+    padding: wp(3),
+    borderRadius: wp(3),
+    marginBottom: hp(1),
   },
   currentUserBubble: {
     alignSelf: 'flex-end',
     backgroundColor: '#1E88E5',
-    borderBottomRightRadius: 2,
+    borderBottomRightRadius: wp(1),
   },
   otherUserBubble: {
     alignSelf: 'flex-start',
     backgroundColor: '#f0f0f0',
-    borderBottomLeftRadius: 2,
+    borderBottomLeftRadius: wp(1),
   },
   senderName: {
     fontWeight: 'bold',
     fontSize: wp(3.5),
-    marginBottom: 4,
+    marginBottom: hp(0.5),
     color: 'rgba(255,255,255,0.9)',
   },
   currentUserText: {
     color: 'white',
+    fontSize: wp(4),
   },
   otherUserText: {
     color: '#333',
+    fontSize: wp(4),
   },
   messageTime: {
     fontSize: wp(2.8),
-    marginTop: 4,
+    marginTop: hp(0.5),
     textAlign: 'right',
     color: 'rgba(255,255,255,0.7)',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    padding: wp(2.5),
+    marginVertical: hp(1),
     borderTopWidth: 1,
     borderTopColor: '#eee',
     backgroundColor: 'white',
   },
+  inputContainerKeyboardActive: {
+    paddingBottom: Platform.OS === 'ios' ? hp(4) : hp(1.5), 
+  },
   input: {
     flex: 1,
-    minHeight: 40,
-    maxHeight: 100,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    minHeight: hp(5),
+    maxHeight: hp(12),
+    paddingHorizontal: wp(3),
+    paddingVertical: hp(1),
     backgroundColor: '#f5f5f5',
-    borderRadius: 20,
-    marginRight: 10,
+    borderRadius: wp(5),
+    marginRight: wp(2.5),
     fontSize: wp(4),
   },
   sendButton: {
-    padding: 8,
+    padding: wp(2),
   },
   modalOverlay: {
     position: 'absolute',
@@ -712,14 +718,14 @@ const styles = StyleSheet.create({
     width: '90%',
     maxHeight: '50%',
     backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 15,
+    borderRadius: wp(2.5),
+    padding: wp(4),
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: hp(2),
   },
   modalTitle: {
     fontSize: wp(4.5),
@@ -728,15 +734,16 @@ const styles = StyleSheet.create({
   modalInput: {
     borderWidth: 1,
     borderColor: '#eee',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
+    borderRadius: wp(2),
+    padding: wp(3),
+    marginBottom: hp(2.5),
     fontSize: wp(4),
   },
   createButton: {
     backgroundColor: '#1E88E5',
-    padding: 14,
-    borderRadius: 8,
+    paddingVertical: hp(1.8),
+    paddingHorizontal: wp(4),
+    borderRadius: wp(2),
     alignItems: 'center',
   },
   createButtonText: {
@@ -747,34 +754,35 @@ const styles = StyleSheet.create({
   inviteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    paddingVertical: hp(1.8),
+    paddingHorizontal: wp(4),
     borderWidth: 1,
     borderColor: '#1E88E5',
-    borderRadius: 8,
-    marginBottom: 10,
+    borderRadius: wp(2),
+    marginBottom: hp(1.2),
   },
   inviteButtonText: {
     color: '#1E88E5',
     fontWeight: '600',
     fontSize: wp(4),
-    marginLeft: 10,
+    marginLeft: wp(2.5),
   },
   userList: {
-    paddingTop: 10,
+    paddingTop: hp(1.2),
   },
   userItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: hp(1.5),
     borderBottomWidth: 1,
     borderBottomColor: '#f5f5f5',
   },
   userAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: wp(10),
+    height: wp(10),
+    borderRadius: wp(5),
     backgroundColor: '#1E88E5',
-    marginRight: 12,
+    marginRight: wp(3),
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -784,5 +792,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
 
 export default GroupsScreen;

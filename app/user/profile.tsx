@@ -85,39 +85,7 @@ export default function ProfileScreen() {
     }
   };
 
-  // const uploadImageToSupabase = async (uri: string): Promise<string> => {
-  //   if (!user) throw new Error('User not authenticated');
-    
-  //   try {
-  //     const response = await fetch(uri);
-  //     const blob = await response.blob();
-      
-  //     const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
-  //     const fileName = `${user.uid}-${Date.now()}.${fileExt}`;
-  //     const filePath = `public/${fileName}`;
-  //     console.log(filePath,"<-- filePath for supabase upload");
-
-  //     const { error } = await supabase.storage
-  //       .from(AVATAR_BUCKET)
-  //       .upload(filePath, blob, {
-  //         contentType: blob.type,
-  //         upsert: true
-  //       });
-
-  //     if (error) throw error;
-
-  //     const { data: { publicUrl } } = supabase.storage
-  //       .from(AVATAR_BUCKET)
-  //       .getPublicUrl(filePath);
-
-  //     return publicUrl;
-  //   } catch (error) {
-  //     console.error('Upload error:', error);
-  //     const errorMessage = (error as SupabaseError).message || 'Failed to upload image';
-  //     throw new Error(errorMessage);
-  //   }
-  // };
-
+  
   const handleSave = async () => {
     if (!user) return;
     if (!avatar) return;

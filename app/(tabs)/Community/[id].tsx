@@ -1,4 +1,18 @@
-import { View, ScrollView, TextInput, ActivityIndicator, TouchableOpacity, RefreshControl, Alert, StyleSheet, Image } from 'react-native';
+import { 
+  View, 
+  ScrollView, 
+  TextInput, 
+  ActivityIndicator, 
+  TouchableOpacity, 
+  RefreshControl, 
+  Alert, 
+  StyleSheet, 
+  Image, 
+  KeyboardAvoidingView, 
+  Platform, 
+  Keyboard,
+  TouchableWithoutFeedback 
+} from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { collection, doc, getDoc, getDocs, addDoc, runTransaction } from 'firebase/firestore';
@@ -23,6 +37,7 @@ export default function QuestionDetails() {
   const [user, setUser] = useState<any>(null);
   const [attachments, setAttachments] = useState<FileData[]>([]);
   const [tempAttachments, setTempAttachments] = useState<string[]>([]);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   const auth = getAuth();
 
@@ -30,7 +45,25 @@ export default function QuestionDetails() {
     const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
       setUser(firebaseUser);
     });
-    return unsubscribe;
+    
+    const keyboardDidShowListener = Keyboard.addListener(
+      'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
   }, []);
 
   const fetchData = async () => {
@@ -239,211 +272,225 @@ export default function QuestionDetails() {
   }
 
   return (
-    <ScrollView 
-      contentContainerStyle={styles.container}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            fetchData();
-          }}
-          colors={['#1E88E5']}
-          tintColor="#1E88E5"
-        />
-      }
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.keyboardAvoidingView}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
-      {/* Question Section */}
-      <ThemedView style={styles.questionContainer}>
-        <ThemedText style={styles.title}>{question.title}</ThemedText>
-        <ThemedText style={styles.description}>{question.content || question.description}</ThemedText>
-        
-        {/* Display question images if any */}
-        {question.attachments && question.attachments.length > 0 && (
-          <View style={styles.attachmentsContainer}>
-            {question.attachments.map((uri: string, index: number) => (
-              <Image 
-                key={index} 
-                source={{ uri }} 
-                style={styles.attachmentImage} 
-                resizeMode="cover"
-              />
-            ))}
-          </View>
-        )}
-        
-        <ThemedView style={styles.questionMeta}>
-          <ThemedView style={styles.userInfo}>
-            <Octicons name="person" size={wp(4)} color="#666" />
-            <ThemedText style={styles.metaText}>{question.userDisplayName || 'Anonymous'}</ThemedText>
-          </ThemedView>
-          
-          <ThemedView style={styles.userInfo}>
-            <Octicons name="clock" size={wp(3.5)} color="#666" />
-            <ThemedText style={styles.metaText}>
-              {question.createdAt?.toDate?.().toLocaleDateString() || 'Unknown date'}
-            </ThemedText>
-          </ThemedView>
-        </ThemedView>
-      </ThemedView>
-
-      {/* Answers Section */}
-      <ThemedView style={styles.answersContainer}>
-        <ThemedView style={styles.sectionHeader}>
-          <Ionicons name="chatbubble-ellipses" size={wp(5)} color="#333" />
-          <ThemedText style={styles.sectionTitle}>
-            Answers ({answers.length})
-          </ThemedText>
-        </ThemedView>
-
-        {answers.length > 0 ? (
-          answers.map((answer) => (
-            <ThemedView key={answer.id} style={styles.answer}>
-              <ThemedText style={styles.answerText}>{answer.content}</ThemedText>
-              
-              {/* Display answer images if any */}
-              {answer.attachments && answer.attachments.length > 0 && (
-                <View style={styles.attachmentsContainer}>
-                  {answer.attachments.map((uri: string, index: number) => (
-                    <Image 
-                      key={index} 
-                      source={{ uri }} 
-                      style={styles.attachmentImage} 
-                      resizeMode="cover"
-                    />
-                  ))}
-                </View>
-              )}
-              
-              <ThemedView style={styles.answerFooter}>
-                <ThemedView style={styles.userInfo}>
-                  <Octicons name="person" size={wp(3.5)} color="#666" />
-                  <ThemedText style={styles.metaText}>{answer.userDisplayName || 'Anonymous'}</ThemedText>
-                  
-                  <Octicons name="dot-fill" size={wp(2)} color="#999" style={styles.dotSeparator} />
-                  <Octicons name="clock" size={wp(3.5)} color="#666" />
-                  <ThemedText style={styles.metaText}>
-                    {answer.createdAt?.toLocaleDateString() || 'Unknown date'}
-                  </ThemedText>
-                </ThemedView>
-                
-                <ThemedView style={styles.voteContainer}>
-                  <TouchableOpacity 
-                    style={styles.voteButton}
-                    onPress={() => handleVote(answer.id, 'upvote')}
-                  >
-                    <Ionicons 
-                      name="arrow-up-circle-outline" 
-                      size={wp(5)} 
-                      color="#666" 
-                    />
-                    <ThemedText style={styles.voteCount}>{answer.upvotes || 0}</ThemedText>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.voteButton}
-                    onPress={() => handleVote(answer.id, 'downvote')}
-                  >
-                    <Ionicons 
-                      name="arrow-down-circle-outline" 
-                      size={wp(5)} 
-                      color="#666" 
-                    />
-                    <ThemedText style={styles.voteCount}>{answer.downvotes || 0}</ThemedText>
-                  </TouchableOpacity>
-                </ThemedView>
-              </ThemedView>
-            </ThemedView>
-          ))
-        ) : (
-          <ThemedView style={styles.emptyAnswers}>
-            <Ionicons name="help-circle-outline" size={wp(10)} color="#999" />
-            <ThemedText style={styles.emptyText}>No answers yet</ThemedText>
-            <ThemedText style={styles.emptySubtext}>Be the first to answer this question!</ThemedText>
-          </ThemedView>
-        )}
-      </ThemedView>
-
-      {/* Answer Form */}
-      <ThemedView style={styles.answerForm}>
-        <ThemedText style={styles.formLabel}>Your Answer</ThemedText>
-        {!user ? (
-          <ThemedView style={styles.signInPrompt}>
-            <Ionicons name="log-in" size={wp(5)} color="#1E88E5" />
-            <ThemedText style={styles.signInText}>Sign in to answer this question</ThemedText>
-          </ThemedView>
-        ) : (
-          <>
-            <TextInput
-              style={styles.input}
-              placeholder="Write your answer..."
-              placeholderTextColor="#999"
-              value={newAnswer}
-              onChangeText={setNewAnswer}
-              multiline
-              editable={!submitting}
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          contentContainerStyle={[styles.container, keyboardVisible && styles.containerKeyboardActive]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchData();
+              }}
+              colors={['#1E88E5']}
+              tintColor="#1E88E5"
             />
+          }
+        >
+          {/* Question Section */}
+          <ThemedView style={styles.questionContainer}>
+            <ThemedText style={styles.title}>{question.title}</ThemedText>
+            <ThemedText style={styles.description}>{question.content || question.description}</ThemedText>
             
-            {/* Image attachments preview */}
-            {tempAttachments.length > 0 && (
-              <View style={styles.attachmentsPreview}>
-                {tempAttachments.map((uri, index) => (
-                  <View key={index} style={styles.previewContainer}>
-                    <Image 
-                      source={{ uri }} 
-                      style={styles.previewImage} 
-                      resizeMode="cover"
-                    />
-                    <TouchableOpacity 
-                      style={styles.removeImageButton}
-                      onPress={() => removeImage(index)}
-                    >
-                      <Ionicons name="close-circle" size={wp(5)} color="#F44336" />
-                    </TouchableOpacity>
-                  </View>
+            {/* Display question images if any */}
+            {question.attachments && question.attachments.length > 0 && (
+              <View style={styles.attachmentsContainer}>
+                {question.attachments.map((uri: string, index: number) => (
+                  <Image 
+                    key={index} 
+                    source={{ uri }} 
+                    style={styles.attachmentImage} 
+                    resizeMode="cover"
+                  />
                 ))}
               </View>
             )}
             
-            <View style={styles.formActions}>
-              <TouchableOpacity 
-                style={styles.uploadButton}
-                onPress={pickImages}
-                disabled={submitting}
-              >
-                <Ionicons name="image-outline" size={wp(5)} color="#333" />
-                <ThemedText style={styles.uploadText}>Add Images</ThemedText>
-              </TouchableOpacity>
+            <ThemedView style={styles.questionMeta}>
+              <ThemedView style={styles.userInfo}>
+                <Octicons name="person" size={wp(4)} color="#666" />
+                <ThemedText style={styles.metaText}>{question.userDisplayName || 'Anonymous'}</ThemedText>
+              </ThemedView>
               
-              <TouchableOpacity
-                style={[styles.submitButton, (submitting || !newAnswer.trim()) && styles.submitButtonDisabled]}
-                onPress={handleSubmit}
-                disabled={submitting || !newAnswer.trim()}
-              >
-                <ThemedText style={styles.submitButtonText}>
-                  {submitting ? (
-                    <>
-                      <ActivityIndicator color="#fff" style={{ marginRight: wp(2) }} />
-                      Posting...
-                    </>
-                  ) : (
-                    'Post Answer'
-                  )}
+              <ThemedView style={styles.userInfo}>
+                <Octicons name="clock" size={wp(3.5)} color="#666" />
+                <ThemedText style={styles.metaText}>
+                  {question.createdAt?.toDate?.().toLocaleDateString() || 'Unknown date'}
                 </ThemedText>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-      </ThemedView>
-    </ScrollView>
+              </ThemedView>
+            </ThemedView>
+          </ThemedView>
+
+          {/* Answers Section */}
+          <ThemedView style={styles.answersContainer}>
+            <ThemedView style={styles.sectionHeader}>
+              <Ionicons name="chatbubble-ellipses" size={wp(5)} color="#333" />
+              <ThemedText style={styles.sectionTitle}>
+                Answers ({answers.length})
+              </ThemedText>
+            </ThemedView>
+
+            {answers.length > 0 ? (
+              answers.map((answer) => (
+                <ThemedView key={answer.id} style={styles.answer}>
+                  <ThemedText style={styles.answerText}>{answer.content}</ThemedText>
+                  
+                  {/* Display answer images if any */}
+                  {answer.attachments && answer.attachments.length > 0 && (
+                    <View style={styles.attachmentsContainer}>
+                      {answer.attachments.map((uri: string, index: number) => (
+                        <Image 
+                          key={index} 
+                          source={{ uri }} 
+                          style={styles.attachmentImage} 
+                          resizeMode="cover"
+                        />
+                      ))}
+                    </View>
+                  )}
+                  
+                  <ThemedView style={styles.answerFooter}>
+                    <ThemedView style={styles.userInfo}>
+                      <Octicons name="person" size={wp(3.5)} color="#666" />
+                      <ThemedText style={styles.metaText}>{answer.userDisplayName || 'Anonymous'}</ThemedText>
+                      
+                      <Octicons name="dot-fill" size={wp(2)} color="#999" style={styles.dotSeparator} />
+                      <Octicons name="clock" size={wp(3.5)} color="#666" />
+                      <ThemedText style={styles.metaText}>
+                        {answer.createdAt?.toLocaleDateString() || 'Unknown date'}
+                      </ThemedText>
+                    </ThemedView>
+                    
+                    <ThemedView style={styles.voteContainer}>
+                      <TouchableOpacity 
+                        style={styles.voteButton}
+                        onPress={() => handleVote(answer.id, 'upvote')}
+                      >
+                        <Ionicons 
+                          name="arrow-up-circle-outline" 
+                          size={wp(5)} 
+                          color="#666" 
+                        />
+                        <ThemedText style={styles.voteCount}>{answer.upvotes || 0}</ThemedText>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                        style={styles.voteButton}
+                        onPress={() => handleVote(answer.id, 'downvote')}
+                      >
+                        <Ionicons 
+                          name="arrow-down-circle-outline" 
+                          size={wp(5)} 
+                          color="#666" 
+                        />
+                        <ThemedText style={styles.voteCount}>{answer.downvotes || 0}</ThemedText>
+                      </TouchableOpacity>
+                    </ThemedView>
+                  </ThemedView>
+                </ThemedView>
+              ))
+            ) : (
+              <ThemedView style={styles.emptyAnswers}>
+                <Ionicons name="help-circle-outline" size={wp(10)} color="#999" />
+                <ThemedText style={styles.emptyText}>No answers yet</ThemedText>
+                <ThemedText style={styles.emptySubtext}>Be the first to answer this question!</ThemedText>
+              </ThemedView>
+            )}
+          </ThemedView>
+
+          {/* Answer Form */}
+          <ThemedView style={[styles.answerForm, keyboardVisible && styles.answerFormKeyboardActive]}>
+            <ThemedText style={styles.formLabel}>Your Answer</ThemedText>
+            {!user ? (
+              <ThemedView style={styles.signInPrompt}>
+                <Ionicons name="log-in" size={wp(5)} color="#1E88E5" />
+                <ThemedText style={styles.signInText}>Sign in to answer this question</ThemedText>
+              </ThemedView>
+            ) : (
+              <>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Write your answer..."
+                  placeholderTextColor="#999"
+                  value={newAnswer}
+                  onChangeText={setNewAnswer}
+                  multiline
+                  editable={!submitting}
+                />
+                
+                {/* Image attachments preview */}
+                {tempAttachments.length > 0 && (
+                  <View style={styles.attachmentsPreview}>
+                    {tempAttachments.map((uri, index) => (
+                      <View key={index} style={styles.previewContainer}>
+                        <Image 
+                          source={{ uri }} 
+                          style={styles.previewImage} 
+                          resizeMode="cover"
+                        />
+                        <TouchableOpacity 
+                          style={styles.removeImageButton}
+                          onPress={() => removeImage(index)}
+                        >
+                          <Ionicons name="close-circle" size={wp(5)} color="#F44336" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                
+                <View style={styles.formActions}>
+                  <TouchableOpacity 
+                    style={styles.uploadButton}
+                    onPress={pickImages}
+                    disabled={submitting}
+                  >
+                    <Ionicons name="image-outline" size={wp(5)} color="#333" />
+                    <ThemedText style={styles.uploadText}>Add Images</ThemedText>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.submitButton, (submitting || !newAnswer.trim()) && styles.submitButtonDisabled]}
+                    onPress={handleSubmit}
+                    disabled={submitting || !newAnswer.trim()}
+                  >
+                    <ThemedText style={styles.submitButtonText}>
+                      {submitting ? (
+                        <>
+                          <ActivityIndicator color="#fff" style={{ marginRight: wp(2) }} />
+                          Posting...
+                        </>
+                      ) : (
+                        'Post Answer'
+                      )}
+                    </ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </ThemedView>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   container: {
     marginVertical: hp(3),
     padding: wp(4),
     paddingBottom: hp(5),
+  },
+  containerKeyboardActive: {
+    paddingBottom: hp(25), // Extra padding when keyboard is active
   },
   centered: {
     flex: 1,
@@ -567,7 +614,7 @@ const styles = StyleSheet.create({
     fontSize: wp(4.5),
     fontWeight: '600',
     marginTop: hp(1),
-    color: '#333',
+    color: '##333',
   },
   emptySubtext: {
     fontSize: wp(4),
@@ -584,6 +631,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: wp(0.5),
     elevation: 2,
+  },
+  answerFormKeyboardActive: {
+    marginBottom: hp(5), // Extra margin when keyboard is active
   },
   formLabel: {
     fontSize: wp(4.5),
