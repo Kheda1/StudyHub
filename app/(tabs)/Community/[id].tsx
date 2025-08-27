@@ -1,4 +1,4 @@
-import { View, ScrollView, TextInput, ActivityIndicator, TouchableOpacity, RefreshControl, Alert, StyleSheet } from 'react-native';
+import { View, ScrollView, TextInput, ActivityIndicator, TouchableOpacity, RefreshControl, Alert, StyleSheet, Image } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { collection, doc, getDoc, getDocs, addDoc, runTransaction } from 'firebase/firestore';
@@ -9,6 +9,8 @@ import { ThemedText } from '@/components/ThemedText';
 import { wp, hp } from '@/constants/common';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Octicons from '@expo/vector-icons/Octicons';
+import * as ImagePicker from 'expo-image-picker';
+import { FileData, uploadImageToSupabase } from '@/services/images';
 
 export default function QuestionDetails() {
   const { id } = useLocalSearchParams();
@@ -19,6 +21,8 @@ export default function QuestionDetails() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [attachments, setAttachments] = useState<FileData[]>([]);
+  const [tempAttachments, setTempAttachments] = useState<string[]>([]);
 
   const auth = getAuth();
 
@@ -59,11 +63,82 @@ export default function QuestionDetails() {
     fetchData();
   }, [id]);
 
+  const pickImages = async () => {
+    if (!user) {
+      Alert.alert('Authentication Required', 'Please sign in to upload images');
+      return;
+    }
+
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Please allow photo access');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        allowsMultipleSelection: true, // Enable multiple selection
+      });
+
+      if (!result.canceled && result.assets.length > 0) {
+        const newFileData: FileData[] = [];
+        const newTempUris: string[] = [];
+        
+        result.assets.forEach(asset => {
+          if (asset.fileName) {
+            const fileData: FileData = {
+              uri: asset.uri,
+              fileName: asset.fileName,
+              type: asset.type || 'image',
+            };
+            newFileData.push(fileData);
+            newTempUris.push(asset.uri);
+          }
+        });
+
+        setAttachments([...attachments, ...newFileData]);
+        setTempAttachments([...tempAttachments, ...newTempUris]);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to select images';
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    const newAttachments = [...attachments];
+    const newTempAttachments = [...tempAttachments];
+    newAttachments.splice(index, 1);
+    newTempAttachments.splice(index, 1);
+    setAttachments(newAttachments);
+    setTempAttachments(newTempAttachments);
+  };
+
   const handleSubmit = async () => {
     if (!user || !newAnswer.trim()) return;
 
     setSubmitting(true);
     try {
+      // Upload attachments to Supabase if any
+      const uploadedAttachments = [];
+      for (const attachment of attachments) {
+        try {
+          const downloadURL = await uploadImageToSupabase(
+            "community-answers", 
+            attachment, 
+            `${user.uid}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+          );
+          uploadedAttachments.push(downloadURL);
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          Alert.alert('Error', 'Failed to upload one or more images');
+        }
+      }
+
       const answersRef = collection(doc(db, 'communityQuestions', String(id)), 'answers');
       await addDoc(answersRef, {
         content: newAnswer,
@@ -73,8 +148,12 @@ export default function QuestionDetails() {
         upvotes: 0,
         downvotes: 0,
         body: newAnswer,
+        attachments: uploadedAttachments,
       });
+      
       setNewAnswer('');
+      setAttachments([]);
+      setTempAttachments([]);
       await fetchData();
     } catch (error) {
       console.error('Error submitting answer:', error);
@@ -179,6 +258,20 @@ export default function QuestionDetails() {
         <ThemedText style={styles.title}>{question.title}</ThemedText>
         <ThemedText style={styles.description}>{question.content || question.description}</ThemedText>
         
+        {/* Display question images if any */}
+        {question.attachments && question.attachments.length > 0 && (
+          <View style={styles.attachmentsContainer}>
+            {question.attachments.map((uri: string, index: number) => (
+              <Image 
+                key={index} 
+                source={{ uri }} 
+                style={styles.attachmentImage} 
+                resizeMode="cover"
+              />
+            ))}
+          </View>
+        )}
+        
         <ThemedView style={styles.questionMeta}>
           <ThemedView style={styles.userInfo}>
             <Octicons name="person" size={wp(4)} color="#666" />
@@ -208,6 +301,20 @@ export default function QuestionDetails() {
             <ThemedView key={answer.id} style={styles.answer}>
               <ThemedText style={styles.answerText}>{answer.content}</ThemedText>
               
+              {/* Display answer images if any */}
+              {answer.attachments && answer.attachments.length > 0 && (
+                <View style={styles.attachmentsContainer}>
+                  {answer.attachments.map((uri: string, index: number) => (
+                    <Image 
+                      key={index} 
+                      source={{ uri }} 
+                      style={styles.attachmentImage} 
+                      resizeMode="cover"
+                    />
+                  ))}
+                </View>
+              )}
+              
               <ThemedView style={styles.answerFooter}>
                 <ThemedView style={styles.userInfo}>
                   <Octicons name="person" size={wp(3.5)} color="#666" />
@@ -232,10 +339,6 @@ export default function QuestionDetails() {
                     />
                     <ThemedText style={styles.voteCount}>{answer.upvotes || 0}</ThemedText>
                   </TouchableOpacity>
-                  
-                  {/* <ThemedView style={styles.scoreBox}>
-                    <ThemedText style={styles.scoreText}>{answer.score || 0}</ThemedText>
-                  </ThemedView> */}
                   
                   <TouchableOpacity 
                     style={styles.voteButton}
@@ -280,22 +383,55 @@ export default function QuestionDetails() {
               multiline
               editable={!submitting}
             />
-            <TouchableOpacity
-              style={styles.submitButton}
-              onPress={handleSubmit}
-              disabled={submitting || !newAnswer.trim()}
-            >
-              <ThemedText style={styles.submitButtonText}>
-                {submitting ? (
-                  <>
-                    <ActivityIndicator color="#fff" style={{ marginRight: wp(2) }} />
-                    Posting...
-                  </>
-                ) : (
-                  'Post Answer'
-                )}
-              </ThemedText>
-            </TouchableOpacity>
+            
+            {/* Image attachments preview */}
+            {tempAttachments.length > 0 && (
+              <View style={styles.attachmentsPreview}>
+                {tempAttachments.map((uri, index) => (
+                  <View key={index} style={styles.previewContainer}>
+                    <Image 
+                      source={{ uri }} 
+                      style={styles.previewImage} 
+                      resizeMode="cover"
+                    />
+                    <TouchableOpacity 
+                      style={styles.removeImageButton}
+                      onPress={() => removeImage(index)}
+                    >
+                      <Ionicons name="close-circle" size={wp(5)} color="#F44336" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+            
+            <View style={styles.formActions}>
+              <TouchableOpacity 
+                style={styles.uploadButton}
+                onPress={pickImages}
+                disabled={submitting}
+              >
+                <Ionicons name="image-outline" size={wp(5)} color="#333" />
+                <ThemedText style={styles.uploadText}>Add Images</ThemedText>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.submitButton, (submitting || !newAnswer.trim()) && styles.submitButtonDisabled]}
+                onPress={handleSubmit}
+                disabled={submitting || !newAnswer.trim()}
+              >
+                <ThemedText style={styles.submitButtonText}>
+                  {submitting ? (
+                    <>
+                      <ActivityIndicator color="#fff" style={{ marginRight: wp(2) }} />
+                      Posting...
+                    </>
+                  ) : (
+                    'Post Answer'
+                  )}
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
           </>
         )}
       </ThemedView>
@@ -335,6 +471,18 @@ const styles = StyleSheet.create({
     color: '#444',
     lineHeight: hp(2.8),
     marginBottom: hp(2),
+  },
+  attachmentsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: hp(2),
+  },
+  attachmentImage: {
+    width: wp(25),
+    height: wp(25),
+    borderRadius: wp(2),
+    marginRight: wp(2),
+    marginBottom: wp(2),
   },
   questionMeta: {
     flexDirection: 'row',
@@ -408,17 +556,6 @@ const styles = StyleSheet.create({
     minWidth: wp(6),
     textAlign: 'center',
   },
-  scoreBox: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: wp(1),
-    paddingHorizontal: wp(2),
-    paddingVertical: hp(0.3),
-    marginHorizontal: wp(1),
-  },
-  scoreText: {
-    fontSize: wp(3.8),
-    fontWeight: '600',
-  },
   emptyAnswers: {
     alignItems: 'center',
     paddingVertical: hp(4),
@@ -463,6 +600,60 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     marginBottom: hp(1.5),
   },
+  attachmentsPreview: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: hp(1.5),
+  },
+  previewContainer: {
+    position: 'relative',
+    marginRight: wp(2),
+    marginBottom: wp(2),
+  },
+  previewImage: {
+    width: wp(20),
+    height: wp(20),
+    borderRadius: wp(2),
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -wp(2),
+    right: -wp(2),
+    backgroundColor: 'white',
+    borderRadius: wp(3),
+  },
+  formActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: wp(2),
+    borderRadius: wp(2),
+    backgroundColor: '#f0f0f0',
+  },
+  uploadText: {
+    marginLeft: wp(2),
+    fontSize: wp(4),
+  },
+  submitButton: {
+    backgroundColor: '#1E88E5',
+    borderRadius: wp(2),
+    padding: wp(3),
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#90CAF9',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: wp(4),
+    fontWeight: '600',
+  },
   signInPrompt: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -473,18 +664,5 @@ const styles = StyleSheet.create({
     fontSize: wp(4),
     color: '#1E88E5',
     marginLeft: wp(2),
-  },
-  submitButton: {
-    backgroundColor: '#1E88E5',
-    borderRadius: wp(2),
-    padding: wp(3),
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: wp(4),
-    fontWeight: '600',
   },
 });

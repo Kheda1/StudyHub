@@ -8,6 +8,8 @@ import {
   View,
   TextInput,
   Image,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import {
   collection,
@@ -27,7 +29,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-//import * as ImagePicker from 'expo-image-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { app } from '@/firebase/FirebaseConfig';
 import { ThemedView } from '@/components/ThemedView';
@@ -36,10 +38,12 @@ import { wp, hp } from '@/constants/common';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Octicons from '@expo/vector-icons/Octicons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { FileData, uploadImageToSupabase } from '@/services/images';
 
 const db = getFirestore(app);
 const auth = getAuth(app);
 const storage = getStorage(app);
+const { width, height } = Dimensions.get('window');
 
 type QuestionListItem = {
   id: string;
@@ -67,8 +71,10 @@ const CommunityQuestionList = () => {
   const [newQuestionTitle, setNewQuestionTitle] = useState<string>('');
   const [newQuestionBody, setNewQuestionBody] = useState<string>('');
   const [uploading, setUploading] = useState<boolean>(false);
-  const [attachments, setAttachments] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<FileData[]>([]);
   const [tempAttachments, setTempAttachments] = useState<string[]>([]);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [zoomModalVisible, setZoomModalVisible] = useState<boolean>(false);
 
   const currentUser = auth.currentUser;
   const userId = currentUser?.uid || null;
@@ -324,6 +330,55 @@ const CommunityQuestionList = () => {
     });
   };
 
+  const handleImagePress = (imageUri: string) => {
+    setSelectedImage(imageUri);
+    setZoomModalVisible(true);
+  };
+
+  const pickImage = async () => {
+    if (!currentUser) {
+      Alert.alert('Authentication Required', 'Please sign in to upload images');
+      return;
+    }
+
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Please allow photo access');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0].fileName) {
+        const fileData: FileData = {
+          uri: result.assets[0].uri,
+          fileName: result.assets[0].fileName,
+          type: result.assets[0].type || 'image',
+        };
+        setAttachments([...attachments, fileData]);
+        setTempAttachments([...tempAttachments, result.assets[0].uri]);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to select image';
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    const newAttachments = [...attachments];
+    const newTempAttachments = [...tempAttachments];
+    newAttachments.splice(index, 1);
+    newTempAttachments.splice(index, 1);
+    setAttachments(newAttachments);
+    setTempAttachments(newTempAttachments);
+  };
+
   const handleCreateQuestion = async () => {
     if (!currentUser) {
       Alert.alert('Authentication Required', 'Please sign in to create a question');
@@ -338,15 +393,20 @@ const CommunityQuestionList = () => {
     try {
       setUploading(true);
       
-      // Upload attachments if any
+      // Upload attachments to Supabase if any
       const uploadedAttachments = [];
-      for (const uri of tempAttachments) {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        const storageRef = ref(storage, `communityQuestions/${Date.now()}_${Math.random().toString(36).substring(2)}`);
-        const snapshot = await uploadBytes(storageRef, blob);
-        const downloadURL = await getDownloadURL(snapshot.ref);
-        uploadedAttachments.push(downloadURL);
+      for (const attachment of attachments) {
+        try {
+          const downloadURL = await uploadImageToSupabase(
+            "community-questions", 
+            attachment, 
+            `${currentUser.uid}-${Date.now()}`
+          );
+          uploadedAttachments.push(downloadURL);
+        } catch (error) {
+          console.error('Error uploading image:', error);
+          Alert.alert('Error', 'Failed to upload one or more images');
+        }
       }
 
       await addDoc(collection(db, 'communityQuestions'), {
@@ -357,11 +417,12 @@ const CommunityQuestionList = () => {
         createdAt: Timestamp.now(),
         upvotes: 0,
         downvotes: 0,
-        //attachments: uploadedAttachments,
+        attachments: uploadedAttachments,
       });
 
       setNewQuestionTitle('');
       setNewQuestionBody('');
+      setAttachments([]);
       setTempAttachments([]);
       setShowQuestionForm(false);
       loadInitialQuestions();
@@ -371,29 +432,6 @@ const CommunityQuestionList = () => {
     } finally {
       setUploading(false);
     }
-  };
-
-  const pickImage = async () => {
-    if (!currentUser) {
-      Alert.alert('Authentication Required', 'Please sign in to upload images');
-      return;
-    }
-
-    // const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    // if (!permissionResult.granted) {
-    //   Alert.alert('Permission Required', 'We need access to your photos to upload images');
-    //   return;
-    // }
-
-    // const result = await ImagePicker.launchImageLibraryAsync({
-    //   mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    //   allowsEditing: true,
-    //   quality: 0.7,
-    // });
-
-    // if (!result.canceled && result.assets) {
-    //   setTempAttachments([...tempAttachments, result.assets[0].uri]);
-    // }
   };
 
   const renderQuestionItem = ({ item }: { item: QuestionListItem }) => (
@@ -407,12 +445,20 @@ const CommunityQuestionList = () => {
         {item.attachments && item.attachments.length > 0 && (
           <View style={styles.attachmentsContainer}>
             {item.attachments.map((uri, index) => (
-              <Image 
+              <TouchableOpacity 
                 key={index} 
-                source={{ uri }} 
-                style={styles.attachmentImage} 
-                resizeMode="cover"
-              />
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleImagePress(uri);
+                }}
+                activeOpacity={0.8}
+              >
+                <Image 
+                  source={{ uri }} 
+                  style={styles.attachmentImage} 
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -527,12 +573,19 @@ const CommunityQuestionList = () => {
           {tempAttachments.length > 0 && (
             <View style={styles.attachmentsPreview}>
               {tempAttachments.map((uri, index) => (
-                <Image 
-                  key={index} 
-                  source={{ uri }} 
-                  style={styles.previewImage} 
-                  resizeMode="cover"
-                />
+                <View key={index} style={styles.previewContainer}>
+                  <Image 
+                    source={{ uri }} 
+                    style={styles.previewImage} 
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity 
+                    style={styles.removeImageButton}
+                    onPress={() => removeImage(index)}
+                  >
+                    <Ionicons name="close-circle" size={wp(5)} color="#F44336" />
+                  </TouchableOpacity>
+                </View>
               ))}
             </View>
           )}
@@ -590,6 +643,34 @@ const CommunityQuestionList = () => {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Image Zoom Modal */}
+      <Modal
+        visible={zoomModalVisible}
+        transparent={true}
+        onRequestClose={() => setZoomModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <TouchableOpacity 
+            style={styles.modalBackground}
+            activeOpacity={1}
+            onPress={() => setZoomModalVisible(false)}
+          >
+            <Image 
+              source={{ uri: selectedImage || '' }} 
+              style={styles.zoomedImage}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.closeButton}
+            onPress={() => setZoomModalVisible(false)}
+          >
+            <Ionicons name="close-circle" size={wp(8)} color="#fff" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </ThemedView>
   );
 };
@@ -666,12 +747,22 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginBottom: wp(3),
   },
+  previewContainer: {
+    position: 'relative',
+    marginRight: wp(2),
+    marginBottom: wp(2),
+  },
   previewImage: {
     width: wp(20),
     height: wp(20),
     borderRadius: wp(2),
-    marginRight: wp(2),
-    marginBottom: wp(2),
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -wp(2),
+    right: -wp(2),
+    backgroundColor: 'white',
+    borderRadius: wp(3),
   },
   questionCard: {
     backgroundColor: '#fff',
@@ -798,5 +889,27 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: wp(4),
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBackground: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomedImage: {
+    width: width * 0.95,
+    height: height * 0.8,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: hp(4),
+    right: wp(4),
   },
 });
