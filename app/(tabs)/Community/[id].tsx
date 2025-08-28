@@ -378,7 +378,9 @@ export default function QuestionDetails() {
                         />
                         <ThemedText style={styles.voteCount}>{answer.upvotes || 0}</ThemedText>
                       </TouchableOpacity>
-                      
+
+                      <View style={styles.voteDivider} />
+
                       <TouchableOpacity 
                         style={styles.voteButton}
                         onPress={() => handleVote(answer.id, 'downvote')}
@@ -591,6 +593,9 @@ const styles = StyleSheet.create({
   voteContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#edededae',
+    borderRadius: wp(5),
+    paddingVertical: wp(1),
   },
   voteButton: {
     flexDirection: 'row',
@@ -602,6 +607,12 @@ const styles = StyleSheet.create({
     marginLeft: wp(1),
     minWidth: wp(6),
     textAlign: 'center',
+  },
+  voteDivider: {
+    width: 1,
+    height: wp(5),
+    backgroundColor: '#8d8585ff',
+    //marginHorizontal: wp(1),
   },
   emptyAnswers: {
     alignItems: 'center',

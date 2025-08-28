@@ -168,6 +168,17 @@ const CommunityQuestionList = () => {
     loadInitialQuestions();
   }, []);
 
+  const formatDateTime = (date: Date) => {
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      hour12: false,
+      minute: '2-digit'
+    });
+  };
+
   // Set up real-time listeners for answers count updates
   useEffect(() => {
     if (questions.length === 0) return;
@@ -474,7 +485,7 @@ const CommunityQuestionList = () => {
               <Octicons name="dot-fill" size={wp(2)} color="#999" style={styles.dotSeparator} />
               <Octicons name="clock" size={wp(3.5)} color="#666" />
               <ThemedText style={styles.metaText}>
-                {item.createdAt.toLocaleDateString()}
+                {formatDateTime(item.createdAt)}
               </ThemedText>
             </>
           )}
@@ -844,7 +855,7 @@ const styles = StyleSheet.create({
   voteDivider: {
     width: 1,
     height: wp(5),
-    backgroundColor: '#ddd',
+    backgroundColor: '#8d8585ff',
     marginHorizontal: wp(1),
   },
   commentButton: {
