@@ -69,6 +69,7 @@ const MessagesScreen = () => {
       'keyboardDidHide',
       () => {
         setKeyboardVisible(false);
+        keyboardHeight.current = 0;
         // Scroll to bottom when keyboard hides
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
@@ -512,9 +513,9 @@ const MessagesScreen = () => {
                     keyExtractor={(item) => item.id}
                     contentContainerStyle={[
                       styles.messagesContainer,
-                      keyboardVisible && { paddingBottom: keyboardHeight.current + hp(1) },
+                      keyboardVisible && { paddingBottom: keyboardHeight.current + hp(5) },
                     ]}
-                    //onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                    onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
                     onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
                     showsVerticalScrollIndicator={false}
                   />
@@ -792,10 +793,10 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     padding: wp(4),
-    //paddingBottom: hp(10),
+    paddingBottom: hp(10),
   },
   messagesContainerKeyboardActive: {
-    //paddingBottom: hp(25),
+    paddingBottom: hp(25),
   },
   messageBubble: {
     maxWidth: '80%',
