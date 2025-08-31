@@ -125,6 +125,7 @@ const MessagesScreen = () => {
 
         // Compute match scores
         const scored = others.map((u) => ({
+          id: u.id,
           userId: u.uid,
           userName: u.displayName || "Unknown",
           score: calculateMatchScore(me, u),
@@ -634,7 +635,7 @@ const MessagesScreen = () => {
                         </View>
                       </TouchableOpacity>
                     )}
-                    keyExtractor={(item) => item.userId}
+                    keyExtractor={(item) => item.id}
                     contentContainerStyle={styles.matchList}
                     keyboardShouldPersistTaps="handled"
                   />
