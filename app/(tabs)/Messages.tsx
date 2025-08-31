@@ -34,16 +34,17 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { COLORS } from '@/constants/Colors';
-import { Chat, Message, Match } from '@/types/types';
+import { Chat, Message, User } from '@/types/types';
 import * as ImagePicker from 'expo-image-picker';
 import { FileData, uploadImageToSupabase } from '@/services/images';
+import { calculateMatchScore } from '@/services/matching'; 
 
 const MessagesScreen = () => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [matches, setMatches] = useState<any[]>([]); // Changed from Match[] to any[]
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -104,27 +105,39 @@ const MessagesScreen = () => {
       setChats(chatsData);
     });
 
-    // Fetch matches (users who liked each other)
+    // Fetch matches dynamically using the new algorithm
     const fetchMatches = async () => {
-      const matchesQuery = query(
-        collection(db, 'matches'),
-        where('usersMatched', 'array-contains', auth.currentUser?.uid)
-      );
-      const snapshot = await getDocs(matchesQuery);
-      const matchesData: Match[] = [];
-      snapshot.forEach(docSnap => {
-        const data = docSnap.data();
-        if (!data) return;
-        const otherUserId = data.usersMatched?.find((id: string) => id !== auth.currentUser?.uid);
-        if (!otherUserId) return;
-        matchesData.push({
-          id: docSnap.id,
-          userId: otherUserId,
-          userName: data.userNames?.[otherUserId] || 'Unknown User'
-        });
-      });
-      setMatches(matchesData);
+      try {
+        const usersSnap = await getDocs(collection(db, "users"));
+        
+        // Cast Firestore data to User type
+        const allUsers: (User & { id: string })[] = usersSnap.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as User),
+        }));
+
+        // Current user
+        const me = allUsers.find((u) => u.uid === auth.currentUser?.uid);
+        if (!me) return;
+
+        // Other users
+        const others = allUsers.filter((u) => u.uid !== auth.currentUser?.uid);
+
+        // Compute match scores
+        const scored = others.map((u) => ({
+          userId: u.uid,
+          userName: u.displayName || "Unknown",
+          score: calculateMatchScore(me, u),
+        }));
+
+        // Sort descending by score and take top 10
+        scored.sort((a, b) => b.score - a.score);
+        setMatches(scored.slice(0, 10));
+      } catch (error) {
+        console.error("Error fetching matches:", error);
+      }
     };
+
 
     fetchMatches();
 
@@ -299,7 +312,7 @@ const MessagesScreen = () => {
     }
   };
 
-  const startNewChat = async (match: Match) => {
+  const startNewChat = async (match: any) => { // Changed parameter type from Match to any
     try {
       const existingChat = chats.find(chat => 
         chat.participantIds?.includes(match.userId)
@@ -603,7 +616,7 @@ const MessagesScreen = () => {
                 {matches.length > 0 ? (
                   <FlatList
                     data={matches}
-                    renderItem={({ item }: { item: Match }) => (
+                    renderItem={({ item }) => (
                       <TouchableOpacity 
                         style={styles.matchItem}
                         onPress={() => startNewChat(item)}
@@ -613,10 +626,15 @@ const MessagesScreen = () => {
                             {item.userName.charAt(0).toUpperCase()}
                           </Text>
                         </View>
-                        <Text style={styles.matchName}>{item.userName}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.matchName}>{item.userName}</Text>
+                          <Text style={{ color: COLORS.lightText, fontSize: 12 }}>
+                            Match Score: {item.score}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
                     )}
-                    keyExtractor={(item) => item.id}
+                    keyExtractor={(item) => item.userId}
                     contentContainerStyle={styles.matchList}
                     keyboardShouldPersistTaps="handled"
                   />

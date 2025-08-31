@@ -144,7 +144,7 @@ export default function SignupScreen() {
           placeholder="e.g. Group study, Goal Setting, Study Buddy..."
         />
 
-        <ThemedText style={styles.label}>Study Times</ThemedText>
+        <ThemedText style={styles.label}>Study Availability Times</ThemedText>
         <TextInput
           style={styles.input}
           value={preferences}

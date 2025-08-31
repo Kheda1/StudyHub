@@ -145,10 +145,10 @@ export interface User {
   displayName: string;
   phone?: string;
   level?: AcademicLevel;
-  interests?: string;
-  subjects?: string;
-  methods?: string;
-  times?: string;
+  interests?: string[];
+  subjects?: string[];
+  methods?: string[];
+  availability?: string[];
 }
 
 export interface StudySession {
