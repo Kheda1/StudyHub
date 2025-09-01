@@ -15,7 +15,8 @@ import {
   TouchableWithoutFeedback,
   Image,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal
 } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -50,9 +51,11 @@ const GroupsScreen = () => {
   const [currentGroup, setCurrentGroup] = useState<Group | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
+  const [showGroupInfoModal, setShowGroupInfoModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAddMembersModal, setShowAddMembersModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupDescription, setNewGroupDescription] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [attachments, setAttachments] = useState<FileData[]>([]);
@@ -102,6 +105,7 @@ const GroupsScreen = () => {
         groupsData.push({
           id: doc.id,
           name: data.name || 'Group',
+          description: data.description || '',
           adminId: data.adminId || '',
           participantIds: data.participantIds || [],
           participantNames: data.participantNames || {},
@@ -286,6 +290,7 @@ const GroupsScreen = () => {
 
       const newGroupRef = await addDoc(collection(db, "groups"), {
         name: newGroupName,
+        description: newGroupDescription,
         createdBy: auth.currentUser.uid,
         adminId: auth.currentUser.uid,
         participantIds: [auth.currentUser.uid],
@@ -299,11 +304,13 @@ const GroupsScreen = () => {
       });
 
       setNewGroupName("");
+      setNewGroupDescription("");
       setShowNewGroupModal(false);
 
       setCurrentGroup({
         id: newGroupRef.id,
         name: newGroupName,
+        description: newGroupDescription,
         adminId: auth.currentUser.uid,
         participantIds: [auth.currentUser.uid],
         participantNames: {
@@ -442,6 +449,23 @@ const GroupsScreen = () => {
     </TouchableOpacity>
   );
 
+  const renderMemberItem = ({ item }: { item: string }) => {
+    const memberName = currentGroup?.participantNames[item] || 'Unknown';
+    return (
+      <View style={styles.memberItem}>
+        <View style={styles.memberAvatar}>
+          <Text style={styles.avatarText}>
+            {memberName.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <Text style={styles.memberName}>{memberName}</Text>
+        {item === currentGroup?.adminId && (
+          <Ionicons name="shield-checkmark" size={wp(4)} color="#1E88E5" />
+        )}
+      </View>
+    );
+  };
+
   return (
     <ThemedView style={styles.container}>
       {!currentGroup ? (
@@ -484,12 +508,15 @@ const GroupsScreen = () => {
                 <TouchableOpacity onPress={() => setCurrentGroup(null)}>
                   <Ionicons name="arrow-back" size={wp(6)} color="#333" />
                 </TouchableOpacity>
-                <View style={styles.groupHeaderContent}>
+                <TouchableOpacity 
+                  style={styles.groupHeaderContent}
+                  onPress={() => setShowGroupInfoModal(true)}
+                >
                   <Text style={styles.groupTitle}>{currentGroup.name}</Text>
                   <Text style={styles.groupSubtitle}>
                     {currentGroup.participantIds?.length || 0} members
                   </Text>
-                </View>
+                </TouchableOpacity>
                 <TouchableOpacity onPress={() => setShowInviteModal(true)}>
                   <Ionicons name="person-add" size={wp(6)} color="#1E88E5" />
                 </TouchableOpacity>
@@ -576,95 +603,171 @@ const GroupsScreen = () => {
         </KeyboardAvoidingView>
       )}
 
-      {/* Modals remain the same */}
+      {/* New Group Modal */}
       {showNewGroupModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create New Group</Text>
-              <TouchableOpacity onPress={() => setShowNewGroupModal(false)}>
-                <Ionicons name="close" size={wp(6)} color="#333" />
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showNewGroupModal}
+          onRequestClose={() => setShowNewGroupModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Create New Group</Text>
+                <TouchableOpacity onPress={() => setShowNewGroupModal(false)}>
+                  <Ionicons name="close" size={wp(6)} color="#333" />
+                </TouchableOpacity>
+              </View>
+              
+              <TextInput
+                style={styles.modalInput}
+                value={newGroupName}
+                onChangeText={setNewGroupName}
+                placeholder="Group name"
+                placeholderTextColor="#999"
+              />
+              
+              <TextInput
+                style={[styles.modalInput, { height: hp(10), textAlignVertical: 'top' }]}
+                value={newGroupDescription}
+                onChangeText={setNewGroupDescription}
+                placeholder="Group description"
+                placeholderTextColor="#999"
+                multiline
+              />
+              
+              <TouchableOpacity 
+                style={[styles.createButton, !newGroupName.trim() && styles.createButtonDisabled]}
+                onPress={createNewGroup}
+                disabled={!newGroupName.trim()}
+              >
+                <Text style={styles.createButtonText}>Create Group</Text>
               </TouchableOpacity>
             </View>
-            
-            <TextInput
-              style={styles.modalInput}
-              value={newGroupName}
-              onChangeText={setNewGroupName}
-              placeholder="Group name"
-              placeholderTextColor="#999"
-            />
-            
-            <TouchableOpacity 
-              style={styles.createButton}
-              onPress={createNewGroup}
-              disabled={!newGroupName.trim()}
-            >
-              <Text style={styles.createButtonText}>Create Group</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </Modal>
       )}
 
+      {/* Group Info Modal */}
+      {showGroupInfoModal && currentGroup && (
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showGroupInfoModal}
+          onRequestClose={() => setShowGroupInfoModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Group Info</Text>
+                <TouchableOpacity onPress={() => setShowGroupInfoModal(false)}>
+                  <Ionicons name="close" size={wp(6)} color="#333" />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.groupInfoSection}>
+                <View style={styles.groupInfoAvatar}>
+                  <Text style={styles.groupInfoAvatarText}>
+                    {currentGroup.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={styles.groupInfoName}>{currentGroup.name}</Text>
+                {currentGroup.description ? (
+                  <Text style={styles.groupInfoDescription}>{currentGroup.description}</Text>
+                ) : (
+                  <Text style={styles.groupInfoDescriptionEmpty}>No description</Text>
+                )}
+              </View>
+              
+              <Text style={styles.sectionTitle}>Members ({currentGroup.participantIds?.length || 0})</Text>
+              
+              <FlatList
+                data={currentGroup.participantIds || []}
+                renderItem={renderMemberItem}
+                keyExtractor={(item) => item}
+                contentContainerStyle={styles.memberList}
+              />
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Invite Modal */}
       {showInviteModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Invite to Group</Text>
-              <TouchableOpacity onPress={() => setShowInviteModal(false)}>
-                <Ionicons name="close" size={wp(6)} color="#333" />
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showInviteModal}
+          onRequestClose={() => setShowInviteModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Invite to Group</Text>
+                <TouchableOpacity onPress={() => setShowInviteModal(false)}>
+                  <Ionicons name="close" size={wp(6)} color="#333" />
+                </TouchableOpacity>
+              </View>
+              
+              <TouchableOpacity 
+                style={styles.inviteButton}
+                onPress={copyInviteLink}
+              >
+                <Ionicons name="copy" size={wp(5)} color="#1E88E5" />
+                <Text style={styles.inviteButtonText}>Copy Invite Link</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.inviteButton}
+                onPress={shareInviteLink}
+              >
+                <Ionicons name="share-social" size={wp(5)} color="#1E88E5" />
+                <Text style={styles.inviteButtonText}>Share Invite</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.inviteButton, { marginTop: hp(2.5) }]}
+                onPress={() => {
+                  setShowInviteModal(false);
+                  fetchUsers();
+                  setShowAddMembersModal(true);
+                }}
+              >
+                <Ionicons name="person-add" size={wp(5)} color="#1E88E5" />
+                <Text style={styles.inviteButtonText}>Add Members Directly</Text>
               </TouchableOpacity>
             </View>
-            
-            <TouchableOpacity 
-              style={styles.inviteButton}
-              onPress={copyInviteLink}
-            >
-              <Ionicons name="copy" size={wp(5)} color="#1E88E5" />
-              <Text style={styles.inviteButtonText}>Copy Invite Link</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.inviteButton}
-              onPress={shareInviteLink}
-            >
-              <Ionicons name="share-social" size={wp(5)} color="#1E88E5" />
-              <Text style={styles.inviteButtonText}>Share Invite</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.inviteButton, { marginTop: hp(2.5) }]}
-              onPress={() => {
-                setShowInviteModal(false);
-                fetchUsers();
-                setShowAddMembersModal(true);
-              }}
-            >
-              <Ionicons name="person-add" size={wp(5)} color="#1E88E5" />
-              <Text style={styles.inviteButtonText}>Add Members Directly</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </Modal>
       )}
 
+      {/* Add Members Modal */}
       {showAddMembersModal && (
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Members</Text>
-              <TouchableOpacity onPress={() => setShowAddMembersModal(false)}>
-                <Ionicons name="close" size={wp(6)} color="#333" />
-              </TouchableOpacity>
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showAddMembersModal}
+          onRequestClose={() => setShowAddMembersModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add Members</Text>
+                <TouchableOpacity onPress={() => setShowAddMembersModal(false)}>
+                  <Ionicons name="close" size={wp(6)} color="#333" />
+                </TouchableOpacity>
+              </View>
+              
+              <FlatList
+                data={users}
+                renderItem={renderUserItem}
+                keyExtractor={(item) => item.uid}
+                contentContainerStyle={styles.userList}
+              />
             </View>
-            
-            <FlatList
-              data={users}
-              renderItem={renderUserItem}
-              keyExtractor={(item) => item.uid}
-              contentContainerStyle={styles.userList}
-            />
           </View>
-        </View>
+        </Modal>
       )}
     </ThemedView>
   );
@@ -899,21 +1002,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#90CAF9',
   },
   modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: wp(4),
   },
   modalContent: {
-    width: '90%',
-    maxHeight: '50%',
+    width: '100%',
     backgroundColor: 'white',
-    borderRadius: wp(2.5),
+    borderRadius: wp(4),
     padding: wp(4),
+    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -930,7 +1030,7 @@ const styles = StyleSheet.create({
     borderColor: '#eee',
     borderRadius: wp(2),
     padding: wp(3),
-    marginBottom: hp(2.5),
+    marginBottom: hp(2),
     fontSize: wp(4),
   },
   createButton: {
@@ -939,6 +1039,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: wp(4),
     borderRadius: wp(2),
     alignItems: 'center',
+  },
+  createButtonDisabled: {
+    backgroundColor: '#90CAF9',
   },
   createButtonText: {
     color: 'white',
@@ -981,6 +1084,76 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   userName: {
+    flex: 1,
+    fontSize: wp(4),
+    fontWeight: '500',
+  },
+  // Group Info Modal Styles
+  groupInfoSection: {
+    alignItems: 'center',
+    marginBottom: hp(2),
+    paddingBottom: hp(2),
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  groupInfoAvatar: {
+    width: wp(20),
+    height: wp(20),
+    borderRadius: wp(10),
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: hp(1),
+  },
+  groupInfoAvatarText: {
+    color: 'white',
+    fontSize: wp(8),
+    fontWeight: 'bold',
+  },
+  groupInfoName: {
+    fontSize: wp(5),
+    fontWeight: 'bold',
+    marginBottom: hp(1),
+    textAlign: 'center',
+  },
+  groupInfoDescription: {
+    fontSize: wp(4),
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: hp(2.5),
+  },
+  groupInfoDescriptionEmpty: {
+    fontSize: wp(4),
+    color: '#999',
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  sectionTitle: {
+    fontSize: wp(4),
+    fontWeight: '600',
+    marginBottom: hp(1),
+    color: '#333',
+  },
+  memberList: {
+    paddingTop: hp(1),
+  },
+  memberItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: hp(1.5),
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  memberAvatar: {
+    width: wp(10),
+    height: wp(10),
+    borderRadius: wp(5),
+    backgroundColor: '#1E88E5',
+    marginRight: wp(3),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  memberName: {
     flex: 1,
     fontSize: wp(4),
     fontWeight: '500',

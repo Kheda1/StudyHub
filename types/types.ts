@@ -46,6 +46,7 @@ export interface StudyGroup {
 export interface Group {
   id: string;
   name: string;
+  description?: string;
   adminId: string;
   participantIds: string[];
   participantNames: { [key: string]: string };
