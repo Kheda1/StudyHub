@@ -14,7 +14,8 @@ import {
   Alert,
   Keyboard,
   TouchableWithoutFeedback,
-  ActivityIndicator
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { ThemedView } from '@/components/ThemedView';
 import { wp, hp } from '@/constants/common';
@@ -44,7 +45,7 @@ const MessagesScreen = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
   const [currentChat, setCurrentChat] = useState<Chat | null>(null);
-  const [matches, setMatches] = useState<any[]>([]); // Changed from Match[] to any[]
+  const [matches, setMatches] = useState<any[]>([]); 
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -476,24 +477,27 @@ const MessagesScreen = () => {
                 </TouchableOpacity>
               </View>
 
-              <FlatList
-                data={chats}
-                renderItem={renderChatItem}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.chatList}
-                ListEmptyComponent={
-                  <View style={styles.emptyState}>
-                    <Ionicons name="chatbubbles" size={48} color={COLORS.lightText} />
-                    <Text style={styles.emptyText}>No messages yet</Text>
-                    <TouchableOpacity 
-                      style={styles.startChatButton}
-                      onPress={() => setShowNewChatModal(true)}
-                    >
-                      <Text style={styles.startChatText}>Start a new chat</Text>
-                    </TouchableOpacity>
-                  </View>
-                }
-              />
+              <ScrollView style={styles.chatScrollView}>
+                <FlatList
+                  data={chats}
+                  renderItem={renderChatItem}
+                  keyExtractor={(item) => item.id}
+                  contentContainerStyle={styles.chatList}
+                  scrollEnabled={false} // Disable FlatList's own scrolling
+                  ListEmptyComponent={
+                    <View style={styles.emptyState}>
+                      <Ionicons name="chatbubbles" size={48} color={COLORS.lightText} />
+                      <Text style={styles.emptyText}>No messages yet</Text>
+                      <TouchableOpacity 
+                        style={styles.startChatButton}
+                        onPress={() => setShowNewChatModal(true)}
+                      >
+                        <Text style={styles.startChatText}>Start a new chat</Text>
+                      </TouchableOpacity>
+                    </View>
+                  }
+                />
+              </ScrollView>
             </>
           ) : (
             <KeyboardAvoidingView
@@ -698,7 +702,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chatList: {
-    flexGrow: 1,
     paddingTop: hp(1),
   },
   emptyState: {
@@ -723,6 +726,9 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: '600',
     fontSize: wp(4),
+  },
+  chatScrollView: {
+    flex: 1,
   },
   chatItem: {
     flexDirection: 'row',
