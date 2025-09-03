@@ -106,7 +106,6 @@ const MessagesScreen = () => {
       setChats(chatsData);
     });
 
-    // Fetch matches dynamically using the new algorithm
     const fetchMatches = async () => {
       try {
         const usersSnap = await getDocs(collection(db, "users"));
@@ -152,7 +151,7 @@ const MessagesScreen = () => {
 
     const messagesQuery = query(
       collection(db, 'chats', currentChat.id, 'messages'),
-      orderBy('createdAt', 'asc') // Changed to 'asc' to show messages in correct order
+      orderBy('createdAt', 'asc') 
     );
 
     const unsubscribeMessages = onSnapshot(messagesQuery, (querySnapshot) => {

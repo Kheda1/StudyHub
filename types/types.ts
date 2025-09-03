@@ -96,6 +96,7 @@ export interface Chat {
   lastUpdated?: any;
   createdAt?: any;
   unreadCount?: number;
+  isDirectMessage?: boolean;
 }
 
 export interface Match {

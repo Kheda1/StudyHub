@@ -469,7 +469,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
-            onPress={() => console.log('Find Partner')}
+            onPress={() => router.push('../user/findPartners')}
           >
             <FontAwesome5 name="search" size={wp(4)} color="#fff" />
             <Text style={[styles.buttonText, { color: '#fff', marginLeft: wp(2) }]}>Find Partner</Text>
