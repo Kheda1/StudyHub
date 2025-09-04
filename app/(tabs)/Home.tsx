@@ -137,12 +137,11 @@ export default function HomeScreen() {
     if (!user) return;
     
     try {
-      const groupsRef = collection(db, 'studyGroups');
+      const groupsRef = collection(db, 'groups');
       const q = query(
         groupsRef,
-        where('isActive', '==', true),
         where('members', 'array-contains', user.uid),
-        limit(10)
+        limit(5) 
       );
 
       const querySnapshot = await getDocs(q);
@@ -154,7 +153,7 @@ export default function HomeScreen() {
 
       setActiveGroups(groups);
     } catch (error) {
-      console.error('Error fetching active groups:', error);
+      console.error('Error fetching groups:', error);
     }
   };
 
@@ -312,7 +311,7 @@ export default function HomeScreen() {
             <View style={styles.emptyState}>
               <FontAwesome5 name="calendar-times" size={wp(6)} color="#BDBDBD" />
               <Text style={styles.emptyText}>No sessions scheduled for today</Text>
-              <TouchableOpacity style={styles.emptyButton} onPress={() => console.log('Schedule a Session')}>
+              <TouchableOpacity style={styles.emptyButton} onPress={() => router.push('../user/ScheduleStudySession')}>
                 <Text style={styles.emptyButtonText}>Schedule a Session</Text>
               </TouchableOpacity>
             </View>
@@ -382,7 +381,7 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
-            <TouchableOpacity style={[styles.button, { backgroundColor: '#9C27B0' }]} onPress={() => console.log('View Analytics')}>
+            <TouchableOpacity style={[styles.button, { backgroundColor: '#9C27B0' }]} onPress={() => router.push('../user/StudyProgress')}>
               <Text style={styles.buttonText}>View Analytics</Text>
             </TouchableOpacity>
           </View>
@@ -410,7 +409,7 @@ export default function HomeScreen() {
                   <View style={styles.groupIcon}>
                     <Text style={styles.groupEmoji}>{group.emoji || '📚'}</Text>
                   </View>
-                  <View style={styles.groupDetails}>
+                  <View style={styles.groupDetails}>  
                     <Text style={styles.groupName}>{group.name}</Text>
                     <Text style={styles.groupMembers}>
                       {group.members?.length || 0} members • {group.onlineMembers?.length || 0} online
