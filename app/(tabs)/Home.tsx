@@ -335,7 +335,7 @@ export default function HomeScreen() {
                   </View>
                 </View>
               ))}
-              <TouchableOpacity style={[styles.button, { backgroundColor: '#4CAF50' }]} onPress={() => console.log('View Full Schedule')}>
+              <TouchableOpacity style={[styles.button, { backgroundColor: '#4CAF50' }]} onPress={() => router.push('../user/ViewFullSchedule')}>
                 <Text style={styles.buttonText}>View Full Schedule</Text>
               </TouchableOpacity>
             </>
@@ -432,7 +432,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Quick Study Tools */}
-        <View style={styles.card}>
+        {/* <View style={styles.card}>
           <View style={styles.cardHeader}>
             <FontAwesome5 name="tools" size={wp(4.5)} color="#607D8B" />
             <Text style={styles.cardTitle}>Quick Study Tools</Text>
@@ -455,13 +455,13 @@ export default function HomeScreen() {
               <Text style={styles.toolText}>Share Notes</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </View> */}
 
         {/* Enhanced Quick Actions */}
         <View style={styles.quickActions}>
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: '#1E88E5' }]}
-            onPress={() => console.log('Start Session')}
+            onPress={() => router.push('../user/StartSession')}
           >
             <FontAwesome5 name="plus" size={wp(4)} color="#fff" />
             <Text style={[styles.buttonText, { color: '#fff', marginLeft: wp(2) }]}>Start Session</Text>
